@@ -12,7 +12,7 @@ if (!PUBLISHABLE_KEY) {
   throw new Error('Missing environment variables');
 }
 
-export default function ConvexProvider({
+export default function ConvexClerkProvider({
   children,
 }: {
   children: React.ReactNode;

@@ -1,10 +1,15 @@
 import React from 'react';
-import ConvexProvider from './convex-provider';
+import ConvexClerkProvider from './convex-clerk-provider';
+import ReactQueryProvider from './react-query-provider';
 
 export default function AppProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <ConvexProvider>{children}</ConvexProvider>;
+  return (
+    <ConvexClerkProvider>
+      <ReactQueryProvider>{children}</ReactQueryProvider>
+    </ConvexClerkProvider>
+  );
 }
