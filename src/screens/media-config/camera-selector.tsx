@@ -1,49 +1,70 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useMediaSources } from '@/hooks/use-media-sources';
-import { CameraIcon, CameraOffIcon } from 'lucide-react';
 import { useState } from 'react';
+
+import { ChevronDown, Cog, VideoIcon, VideoOffIcon } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useMediaSources } from '@/hooks/use-media-sources';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function CameraSelector() {
-  const [selectedVideo, setSelectedVideo] = useState<string>('');
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [selectedCamera, setSelectedCamera] = useState<string>('');
   const { data, isPending } = useMediaSources();
 
   if (isPending) {
     return <MediaSelectorSkeleton type='camera' />;
   }
 
-  const handleVideoChange = (value: string) => {
-    setSelectedVideo(value);
-    // TODO: Implement video change logic
-  };
-
   return (
-    <Select value={selectedVideo} onValueChange={handleVideoChange}>
-      <SelectTrigger id='video'>
-        <SelectValue placeholder='Select a camera' />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value='none'>
-          <div className='flex items-center gap-2 text-destructive'>
-            <CameraOffIcon className='size-4' />
-            No Camera
-          </div>
-        </SelectItem>
-        {data?.videoinputs.map((device) => (
-          <SelectItem key={device.deviceId} value={device.deviceId}>
-            <div className='flex items-center gap-2'>
-              <CameraIcon className='size-4' />
-              <span>{device.label || `Camera ${device.deviceId}`}</span>
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
+      <Button
+        size={'icon'}
+        className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+        variant={cameraEnabled ? 'default' : 'destructive'}
+        onClick={() => setCameraEnabled(!cameraEnabled)}>
+        <span className='sr-only'>Toggle camera on/off</span>
+        {cameraEnabled ? <VideoIcon size={24} /> : <VideoOffIcon size={24} />}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+            size='icon'
+            aria-label='Options'>
+            <ChevronDown size={16} strokeWidth={2} aria-hidden='true' />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='center'>
+          <DropdownMenuLabel>Microphone</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {data?.videoinputs.map((device) => (
+            <DropdownMenuItem
+              key={device.deviceId}
+              onSelect={() => setSelectedCamera(device.deviceId)}>
+              <div className='flex items-center gap-2'>
+                <VideoIcon className='size-4' />
+                <span>{device.label || `Camera ${device.deviceId}`}</span>
+              </div>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem asChild>
+            <Button
+              variant='ghost'
+              className='w-full justify-start font-normal'>
+              <Cog size={16} aria-hidden='true' />
+              Settings
+            </Button>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

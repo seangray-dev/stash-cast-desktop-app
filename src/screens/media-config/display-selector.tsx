@@ -1,64 +1,87 @@
-import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
-import {
+  ChevronDown,
+  Cog,
   ScreenShareIcon,
   ScreenShareOffIcon,
   SquareDashedIcon,
 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
 import DisplaysDialog from './displays-dialog';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 
 export default function DisplaySelector() {
+  const [displayEnabled, setDisplayEnabled] = useState(false);
   const { data, isPending } = useMediaSources();
+
+  if (!data) {
+    return null;
+  }
+
+  const screens = data.displays.filter(isScreen);
+  const windows = data.displays.filter(isWindow);
 
   if (isPending) {
     return <MediaSelectorSkeleton type='display' />;
   }
 
-  const displays = data?.displays;
-
-  const screens = displays?.filter(isScreen) || [];
-  const windows = displays?.filter(isWindow) || [];
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant='outline'
-          className='flex items-center gap-2 w-full justify-start'>
-          <ScreenShareIcon className='w-size-4' />
-          <span className='text-sm'>Screen Capture</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuGroup>
-          {/* When selected opens a dialog. If detected multiple displays, select which display to capture fullscreen of. If only one display, capture fullscreen of that display */}
-          <DropdownMenuItem asChild>
-            <DisplaysDialog screens={screens} />
-          </DropdownMenuItem>
-          {/* When selected opens a dialog. If detected multiple displays, first select display, then select which window within that display to capture */}
-          <DropdownMenuItem asChild>
-            <WindowsDialog windows={windows} />
-          </DropdownMenuItem>
-          {/* When Selcted closes the dropdown and allows users to position the window capture area */}
-          <DropdownMenuItem className='flex items-center gap-2'>
+    <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
+      <Button
+        size={'icon'}
+        className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+        variant={displayEnabled ? 'default' : 'destructive'}
+        onClick={() => setDisplayEnabled(!displayEnabled)}>
+        <span className='sr-only'>Toggle display on/off</span>
+        {displayEnabled ? (
+          <ScreenShareIcon size={24} />
+        ) : (
+          <ScreenShareOffIcon size={24} />
+        )}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+            size='icon'
+            aria-label='Options'>
+            <ChevronDown size={16} strokeWidth={2} aria-hidden='true' />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end'>
+          <DropdownMenuLabel>Screen</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DisplaysDialog screens={screens} />
+          <WindowsDialog windows={windows} />
+          <Button
+            variant='ghost'
+            className='flex items-center gap-2 justify-start px-2 w-full'>
             <SquareDashedIcon className='w-size-4' />
             Custom Size
+          </Button>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Button
+              variant='ghost'
+              className='w-full justify-start font-normal'>
+              <Cog size={16} aria-hidden='true' />
+              Settings
+            </Button>
           </DropdownMenuItem>
-          <DropdownMenuItem className='flex items-center gap-2 text-destructive'>
-            <ScreenShareOffIcon className='w-size-4' />
-            None
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
