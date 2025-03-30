@@ -1,20 +1,19 @@
-import { DesktopSource } from '@/hooks/use-media-sources';
 import CameraSelector from './camera-selector';
 import DisplaySelector from './display-selector';
+import MicLevel from './mic-level';
 import MicSelector from './mic-selector';
 import RecordButton from './record-button';
 
-interface ControlsProps {
-  onSelect: (screen: DesktopSource | null) => void;
-}
-
-export default function Controls({ onSelect }: ControlsProps) {
+export default function Controls() {
   return (
-    <div className='flex flex-wrap items-center justify-center gap-1'>
-      <DisplaySelector onSelect={onSelect} />
-      <MicSelector />
-      <CameraSelector />
-      <RecordButton />
+    <div className='flex flex-col gap-4'>
+      <MicLevel />
+      <div className='flex flex-wrap items-center justify-center gap-1'>
+        <DisplaySelector />
+        <MicSelector />
+        <CameraSelector />
+        <RecordButton />
+      </div>
     </div>
   );
 }

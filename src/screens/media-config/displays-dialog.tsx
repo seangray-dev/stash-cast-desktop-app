@@ -2,8 +2,6 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -11,17 +9,20 @@ import {
 import { DesktopSource } from '@/hooks/use-media-sources';
 import { MonitorIcon } from 'lucide-react';
 import { useState } from 'react';
+import { useMediaConfig } from './media-config-context';
 
 interface DisplaysDialogProps {
   screens: DesktopSource[];
-  onSelect: (screen: DesktopSource) => void;
 }
 
-export default function DisplaysDialog({
-  screens,
-  onSelect,
-}: DisplaysDialogProps) {
+export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
+  const { setSelectedScreen } = useMediaConfig();
   const [open, setOpen] = useState(false);
+
+  const handleSelect = (screen: DesktopSource) => {
+    setSelectedScreen(screen);
+    setOpen(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -30,36 +31,31 @@ export default function DisplaysDialog({
           variant='ghost'
           className='flex items-center gap-2 justify-start px-2 w-full'>
           <MonitorIcon className='w-size-4' />
-          Full Screen
+          Entire Screen
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Select Display</DialogTitle>
-          <DialogDescription>
-            Choose which display you want to capture.
-          </DialogDescription>
+          <DialogTitle>Select Screen</DialogTitle>
         </DialogHeader>
-        <div className='grid gap-4 py-4'>
+        <div className='grid grid-cols-2 gap-4'>
           {screens.map((screen) => (
             <Button
               key={screen.id}
               variant='outline'
-              className='flex items-center gap-2 justify-start'
-              onClick={() => {
-                onSelect(screen);
-                setOpen(false);
-              }}>
-              <MonitorIcon className='w-size-4' />
-              {screen.name}
+              className='flex flex-col items-center gap-2 p-2 h-auto'
+              onClick={() => handleSelect(screen)}>
+              <div className='relative w-full aspect-video bg-background'>
+                <img
+                  src={screen.thumbnail.toDataURL()}
+                  alt={screen.name}
+                  className='w-full h-full object-contain rounded-md'
+                />
+              </div>
+              <span className='text-sm font-medium'>{screen.name}</span>
             </Button>
           ))}
         </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import {
   ChevronDown,
@@ -25,37 +25,41 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  DesktopSource,
-  isScreen,
-  isWindow,
-  useMediaSources,
-} from '@/hooks/use-media-sources';
+import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
 import DisplaysDialog from './displays-dialog';
+import { useMediaConfig } from './media-config-context';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 
-interface DisplaySelectorProps {
-  onSelect: (screen: DesktopSource | null) => void;
-}
-
-export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
-  const [displayEnabled, setDisplayEnabled] = useState(false);
-  const [selectedScreen, setSelectedScreen] = useState<DesktopSource | null>(
-    null
-  );
+export default function DisplaySelector() {
+  const { selectedScreen, setSelectedScreen, screenStream, setScreenStream } =
+    useMediaConfig();
   const { data, isPending } = useMediaSources();
 
-  const handleDisplayToggle = () => {
-    const newDisplayEnabled = !displayEnabled;
-    setDisplayEnabled(newDisplayEnabled);
+  const handleDisplayToggle = async () => {
+    if (screenStream) {
+      // If we have a stream, stop it
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+      return;
+    }
 
-    if (!newDisplayEnabled) {
-      // When turning off, stop sharing but keep the selected screen
-      onSelect(null);
-    } else if (selectedScreen) {
-      // When turning on and we have a screen selected, start sharing it
-      onSelect(selectedScreen);
+    // If we have a selected screen but no stream, start streaming
+    if (selectedScreen) {
+      try {
+        const stream = await window.navigator.mediaDevices.getUserMedia({
+          video: {
+            // @ts-ignore - Electron's desktopCapturer requires these properties
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: selectedScreen.id,
+            },
+          },
+        });
+        setScreenStream(stream);
+      } catch (error) {
+        console.error('Error capturing screen:', error);
+      }
     }
   };
 
@@ -69,13 +73,7 @@ export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, [displayEnabled, selectedScreen, onSelect]);
-
-  const handleScreenSelect = (screen: DesktopSource) => {
-    setSelectedScreen(screen);
-    setDisplayEnabled(true);
-    onSelect(screen);
-  };
+  }, [selectedScreen, screenStream]);
 
   // Early returns after all hooks
   if (!data) {
@@ -97,10 +95,11 @@ export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
             <Button
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-              variant={displayEnabled ? 'default' : 'destructive'}
-              onClick={handleDisplayToggle}>
+              variant={screenStream ? 'default' : 'destructive'}
+              onClick={handleDisplayToggle}
+              disabled={!selectedScreen}>
               <span className='sr-only'>Toggle display on/off</span>
-              {displayEnabled ? (
+              {screenStream ? (
                 <ScreenShareIcon size={24} />
               ) : (
                 <ScreenShareOffIcon size={24} />
@@ -121,7 +120,7 @@ export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant={displayEnabled ? 'default' : 'destructive'}
+            variant={screenStream ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>
@@ -136,7 +135,7 @@ export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
         <DropdownMenuContent align='end'>
           <DropdownMenuLabel>Screen</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DisplaysDialog screens={screens} onSelect={handleScreenSelect} />
+          <DisplaysDialog screens={screens} />
           <WindowsDialog windows={windows} />
           <Button
             variant='ghost'
