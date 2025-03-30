@@ -9,8 +9,10 @@ export default function SignInScreen() {
   }
 
   return (
-    <div className='h-screen w-screen flex justify-center items-center'>
-      <SignIn />
+    <div className='h-screen w-screen flex justify-center items-center drag'>
+      <div className='no-drag'>
+        <SignIn />
+      </div>
     </div>
   );
 }
