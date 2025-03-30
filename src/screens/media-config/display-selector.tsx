@@ -32,8 +32,7 @@ import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 
 export default function DisplaySelector() {
-  const { selectedScreen, setSelectedScreen, screenStream, setScreenStream } =
-    useMediaConfig();
+  const { selectedScreen, screenStream, setScreenStream } = useMediaConfig();
   const { data, isPending } = useMediaSources();
 
   const handleDisplayToggle = async () => {

@@ -19,6 +19,7 @@ interface MediaConfigContextType {
   isRecording: boolean;
   setIsRecording: (recording: boolean) => void;
   isDisplayEnabled: boolean;
+  setIsDisplayEnabled: (enabled: boolean) => void;
   toggleDisplay: () => void;
 }
 
@@ -91,6 +92,7 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
         isRecording,
         setIsRecording,
         isDisplayEnabled,
+        setIsDisplayEnabled,
         toggleDisplay,
       }}>
       {children}

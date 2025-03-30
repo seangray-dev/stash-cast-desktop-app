@@ -16,11 +16,12 @@ interface DisplaysDialogProps {
 }
 
 export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
-  const { setSelectedScreen } = useMediaConfig();
+  const { setSelectedScreen, setIsDisplayEnabled } = useMediaConfig();
   const [open, setOpen] = useState(false);
 
   const handleSelect = (screen: DesktopSource) => {
     setSelectedScreen(screen);
+    setIsDisplayEnabled(true);
     setOpen(false);
   };
 
@@ -47,7 +48,7 @@ export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
               onClick={() => handleSelect(screen)}>
               <div className='relative w-full aspect-video bg-background'>
                 <img
-                  src={screen.thumbnail.toDataURL()}
+                  src={screen.thumbnail.toString()}
                   alt={screen.name}
                   className='w-full h-full object-contain rounded-md'
                 />

@@ -47,10 +47,33 @@ function setupTray() {
 }
 function setupIPC() {
   ipcMain.handle("getSources", async (_event) => {
-    const sources = await desktopCapturer.getSources({
-      types: ["screen", "window"],
+    const screens = await desktopCapturer.getSources({
+      types: ["screen"],
       thumbnailSize: { width: 150, height: 150 }
     });
+    const windows = await desktopCapturer.getSources({
+      types: ["window"],
+      thumbnailSize: { width: 150, height: 150 }
+    });
+    const screenThumbnails = screens.map((screen) => {
+      return {
+        id: screen.id,
+        name: screen.name,
+        thumbnail: screen.thumbnail.toDataURL(),
+        display_id: screen.display_id,
+        appIcon: screen.appIcon
+      };
+    });
+    const windowThumbnails = windows.map((window) => {
+      return {
+        id: window.id,
+        name: window.name,
+        thumbnail: window.thumbnail.toDataURL(),
+        display_id: window.display_id,
+        appIcon: window.appIcon
+      };
+    });
+    const sources = [...screenThumbnails, ...windowThumbnails];
     return sources;
   });
   ipcMain.on("start-recording", () => {
