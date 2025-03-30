@@ -25,15 +25,59 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
+import {
+  DesktopSource,
+  isScreen,
+  isWindow,
+  useMediaSources,
+} from '@/hooks/use-media-sources';
 import DisplaysDialog from './displays-dialog';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 
-export default function DisplaySelector() {
+interface DisplaySelectorProps {
+  onSelect: (screen: DesktopSource | null) => void;
+}
+
+export default function DisplaySelector({ onSelect }: DisplaySelectorProps) {
   const [displayEnabled, setDisplayEnabled] = useState(false);
+  const [selectedScreen, setSelectedScreen] = useState<DesktopSource | null>(
+    null
+  );
   const { data, isPending } = useMediaSources();
 
+  const handleDisplayToggle = () => {
+    const newDisplayEnabled = !displayEnabled;
+    setDisplayEnabled(newDisplayEnabled);
+
+    if (!newDisplayEnabled) {
+      // When turning off, stop sharing but keep the selected screen
+      onSelect(null);
+    } else if (selectedScreen) {
+      // When turning on and we have a screen selected, start sharing it
+      onSelect(selectedScreen);
+    }
+  };
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleDisplayToggle();
+      }
+    };
+
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, [displayEnabled, selectedScreen, onSelect]);
+
+  const handleScreenSelect = (screen: DesktopSource) => {
+    setSelectedScreen(screen);
+    setDisplayEnabled(true);
+    onSelect(screen);
+  };
+
+  // Early returns after all hooks
   if (!data) {
     return null;
   }
@@ -45,18 +89,6 @@ export default function DisplaySelector() {
     return <MediaSelectorSkeleton type='display' />;
   }
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setDisplayEnabled((prevDisplayEnabled) => !prevDisplayEnabled);
-      }
-    };
-
-    document.addEventListener('keydown', down);
-    return () => document.removeEventListener('keydown', down);
-  }, []);
-
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
       <TooltipProvider delayDuration={100}>
@@ -66,7 +98,7 @@ export default function DisplaySelector() {
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={displayEnabled ? 'default' : 'destructive'}
-              onClick={() => setDisplayEnabled(!displayEnabled)}>
+              onClick={handleDisplayToggle}>
               <span className='sr-only'>Toggle display on/off</span>
               {displayEnabled ? (
                 <ScreenShareIcon size={24} />
@@ -104,7 +136,7 @@ export default function DisplaySelector() {
         <DropdownMenuContent align='end'>
           <DropdownMenuLabel>Screen</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DisplaysDialog screens={screens} />
+          <DisplaysDialog screens={screens} onSelect={handleScreenSelect} />
           <WindowsDialog windows={windows} />
           <Button
             variant='ghost'

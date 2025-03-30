@@ -32,10 +32,6 @@ export default function MicSelector() {
   const [selectedMicrophone, setSelectedMicrophone] = useState<string>('');
   const { data, isPending } = useMediaSources();
 
-  if (isPending) {
-    return <MediaSelectorSkeleton type='microphone' />;
-  }
-
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'd' && (e.metaKey || e.ctrlKey)) {
@@ -47,6 +43,10 @@ export default function MicSelector() {
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, []);
+
+  if (isPending) {
+    return <MediaSelectorSkeleton type='microphone' />;
+  }
 
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>

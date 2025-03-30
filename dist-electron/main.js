@@ -15,7 +15,7 @@ function createMainAppWindow() {
     width: 900,
     height: 700,
     minWidth: 320,
-    minHeight: 600,
+    minHeight: 650,
     titleBarStyle: "default",
     frame: false,
     resizable: true,

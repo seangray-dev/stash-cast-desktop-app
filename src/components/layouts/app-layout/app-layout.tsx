@@ -17,7 +17,7 @@ export default function AppLayout() {
         <SiteHeader />
         <div className='flex flex-1'>
           <AppSidebar />
-          <SidebarInset className='px-8 py-4'>
+          <SidebarInset className='max-h-[calc(100svh-var(--header-height))] px-8 py-4'>
             <Outlet />
           </SidebarInset>
         </div>
