@@ -44,10 +44,15 @@ export default function RecordButton() {
         <DropdownMenuTrigger asChild>
           <Button
             disabled={isRecording}
-            className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+            className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>
-            <ChevronDown size={16} strokeWidth={2} aria-hidden='true' />
+            <ChevronDown
+              size={16}
+              strokeWidth={2}
+              aria-hidden='true'
+              className='transition-transform duration-300 group-data-[state=open]:rotate-180'
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end'>
