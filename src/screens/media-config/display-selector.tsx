@@ -26,8 +26,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
+import { useMediaConfig } from '../../providers/media-config-provider';
 import DisplaysDialog from './displays-dialog';
-import { useMediaConfig } from './media-config-context';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 

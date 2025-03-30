@@ -1,5 +1,6 @@
 import React from 'react';
 import ConvexClerkProvider from './convex-clerk-provider';
+import { MediaConfigProvider } from './media-config-provider';
 import ReactQueryProvider from './react-query-provider';
 
 export default function AppProvider({
@@ -9,7 +10,9 @@ export default function AppProvider({
 }) {
   return (
     <ConvexClerkProvider>
-      <ReactQueryProvider>{children}</ReactQueryProvider>
+      <ReactQueryProvider>
+        <MediaConfigProvider>{children}</MediaConfigProvider>
+      </ReactQueryProvider>
     </ConvexClerkProvider>
   );
 }

@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import path from 'node:path';
+import path, { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import electron from 'vite-plugin-electron/simple';
 
@@ -12,14 +12,9 @@ export default defineConfig({
         entry: 'electron/main.ts',
         vite: {
           build: {
-            rollupOptions: {
-              external: ['electron'],
-            },
-          },
-          resolve: {
-            alias: {
-              '@': path.resolve(__dirname, 'src'),
-            },
+            outDir: 'dist-electron',
+            emptyOutDir: false,
+            sourcemap: true,
           },
         },
       },
@@ -29,6 +24,14 @@ export default defineConfig({
       renderer: process.env.NODE_ENV === 'test' ? undefined : {},
     }),
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        camera: resolve(__dirname, 'src/camera.html'),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

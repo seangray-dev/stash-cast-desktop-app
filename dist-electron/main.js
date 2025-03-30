@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, nativeImage, Tray } from "electron";
+import { app, BrowserWindow, systemPreferences, ipcMain, desktopCapturer, nativeImage, Tray } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const applicationName = "Stash Cast";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const applicationName = "Stash Cast";
 process.env.APP_ROOT = path.join(__dirname, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
@@ -10,6 +10,17 @@ const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let tray = null;
 let mainAppWindow = null;
+let cameraWindow = null;
+async function checkAndRequestPermissions() {
+  if (process.platform === "darwin") {
+    if (!systemPreferences.getMediaAccessStatus("camera")) {
+      await systemPreferences.askForMediaAccess("camera");
+    }
+    if (!systemPreferences.getMediaAccessStatus("microphone")) {
+      await systemPreferences.askForMediaAccess("microphone");
+    }
+  }
+}
 function createMainAppWindow() {
   mainAppWindow = new BrowserWindow({
     width: 900,
@@ -32,6 +43,55 @@ function createMainAppWindow() {
   } else {
     mainAppWindow.loadFile(path.join(RENDERER_DIST, "index.html"));
   }
+}
+function createCameraWindow() {
+  console.log("Creating camera window...");
+  cameraWindow = new BrowserWindow({
+    width: 320,
+    height: 320,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    movable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.mjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: true,
+      backgroundThrottling: false
+    },
+    vibrancy: "under-window",
+    visualEffectState: "active"
+  });
+  cameraWindow.setIgnoreMouseEvents(false);
+  if (VITE_DEV_SERVER_URL) {
+    console.log(
+      "Loading camera window URL:",
+      `${VITE_DEV_SERVER_URL}src/camera.html`
+    );
+    cameraWindow.loadURL(`${VITE_DEV_SERVER_URL}src/camera.html`);
+  } else {
+    const filePath = path.join(RENDERER_DIST, "camera.html");
+    console.log("Loading camera window file:", filePath);
+    cameraWindow.loadFile(filePath);
+  }
+  cameraWindow.webContents.on(
+    "did-fail-load",
+    (event, errorCode, errorDescription) => {
+      console.error(
+        "Camera window failed to load:",
+        errorCode,
+        errorDescription
+      );
+    }
+  );
+  cameraWindow.webContents.on("did-finish-load", () => {
+    console.log("Camera window loaded successfully");
+  });
+  cameraWindow.webContents.openDevTools({ mode: "detach" });
 }
 function setupTray() {
   const icon = nativeImage.createFromDataURL(
@@ -85,8 +145,54 @@ function setupIPC() {
   ipcMain.on("close-app", () => {
     app.quit();
   });
+  ipcMain.on("show-camera-window", () => {
+    console.log("Received show-camera-window event");
+    if (!cameraWindow) {
+      console.log("No camera window exists, creating new one");
+      createCameraWindow();
+    } else {
+      console.log("Camera window exists, showing it");
+      if (cameraWindow.isDestroyed()) {
+        console.log("Camera window was destroyed, creating new one");
+        createCameraWindow();
+      } else {
+        cameraWindow.showInactive();
+      }
+    }
+  });
+  ipcMain.on("camera-stream-ready", (event, streamInfo) => {
+    console.log("Received camera-stream-ready event:", streamInfo);
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      console.log("Forwarding stream info to camera window");
+      cameraWindow.webContents.send("camera-stream-ready", streamInfo);
+    } else {
+      console.log("Camera window not available to receive stream");
+    }
+  });
+  ipcMain.on("hide-camera-window", () => {
+    console.log("Received hide-camera-window event");
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      cameraWindow.hide();
+    }
+  });
+  ipcMain.on("set-camera-window-position", (_event, { x, y }) => {
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      cameraWindow.setPosition(x, y);
+    }
+  });
+  ipcMain.handle("get-display-info", (_event, displayId) => {
+    const display = require("electron").screen.getDisplayMatching({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      displayId
+    });
+    return display;
+  });
 }
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await checkAndRequestPermissions();
   setupIPC();
   setupTray();
   createMainAppWindow();
@@ -106,3 +212,4 @@ export {
   RENDERER_DIST,
   VITE_DEV_SERVER_URL
 };
+//# sourceMappingURL=main.js.map

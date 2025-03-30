@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
-import { useMediaConfig } from './media-config-context';
+import { useMediaConfig } from '../../providers/media-config-provider';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function MicSelector() {

@@ -1,16 +1,17 @@
-import { applicationName } from '@/config/app';
 import {
   app,
   BrowserWindow,
   desktopCapturer,
   ipcMain,
   nativeImage,
+  systemPreferences,
   Tray,
 } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const applicationName = 'Stash Cast';
 
 // The built directory structure
 //
@@ -37,6 +38,20 @@ let tray: Tray | null = null;
 let mainAppWindow: BrowserWindow | null = null;
 let controlsWindow: BrowserWindow | null = null;
 let cameraWindow: BrowserWindow | null = null;
+
+async function checkAndRequestPermissions() {
+  if (process.platform === 'darwin') {
+    // Request camera permission
+    if (!systemPreferences.getMediaAccessStatus('camera')) {
+      await systemPreferences.askForMediaAccess('camera');
+    }
+
+    // Request microphone permission
+    if (!systemPreferences.getMediaAccessStatus('microphone')) {
+      await systemPreferences.askForMediaAccess('microphone');
+    }
+  }
+}
 
 function createMainAppWindow() {
   mainAppWindow = new BrowserWindow({
@@ -85,27 +100,63 @@ function createMainAppWindow() {
 //   }
 // }
 
-// function createCameraWindow() {
-//   cameraWindow = new BrowserWindow({
-//     width: 280,
-//     height: 200,
-//     frame: false,
-//     resizable: true,
-//     movable: true,
-//     show: false,
-//     alwaysOnTop: true,
-//     transparent: true,
-//     webPreferences: {
-//       preload: path.join(__dirname, 'preload.mjs'),
-//     },
-//   });
+function createCameraWindow() {
+  console.log('Creating camera window...');
+  cameraWindow = new BrowserWindow({
+    width: 320,
+    height: 320,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    movable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: true,
+      backgroundThrottling: false,
+    },
+    vibrancy: 'under-window',
+    visualEffectState: 'active',
+  });
 
-//   if (VITE_DEV_SERVER_URL) {
-//     cameraWindow.loadURL(`${VITE_DEV_SERVER_URL}/camera`);
-//   } else {
-//     cameraWindow.loadFile(path.join(RENDERER_DIST, 'camera.html'));
-//   }
-// }
+  // Set window to be transparent to mouse events except for the video
+  cameraWindow.setIgnoreMouseEvents(false);
+
+  if (VITE_DEV_SERVER_URL) {
+    console.log(
+      'Loading camera window URL:',
+      `${VITE_DEV_SERVER_URL}src/camera.html`
+    );
+    cameraWindow.loadURL(`${VITE_DEV_SERVER_URL}src/camera.html`);
+  } else {
+    const filePath = path.join(RENDERER_DIST, 'camera.html');
+    console.log('Loading camera window file:', filePath);
+    cameraWindow.loadFile(filePath);
+  }
+
+  // Add window load event logging
+  cameraWindow.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription) => {
+      console.error(
+        'Camera window failed to load:',
+        errorCode,
+        errorDescription
+      );
+    }
+  );
+
+  cameraWindow.webContents.on('did-finish-load', () => {
+    console.log('Camera window loaded successfully');
+  });
+
+  // Open DevTools for debugging
+  cameraWindow.webContents.openDevTools({ mode: 'detach' });
+}
 
 function setupTray() {
   const icon = nativeImage.createFromDataURL(
@@ -171,14 +222,63 @@ function setupIPC() {
   ipcMain.on('close-app', () => {
     app.quit();
   });
+
+  ipcMain.on('show-camera-window', () => {
+    console.log('Received show-camera-window event');
+    if (!cameraWindow) {
+      console.log('No camera window exists, creating new one');
+      createCameraWindow();
+    } else {
+      console.log('Camera window exists, showing it');
+      if (cameraWindow.isDestroyed()) {
+        console.log('Camera window was destroyed, creating new one');
+        createCameraWindow();
+      } else {
+        cameraWindow.showInactive();
+      }
+    }
+  });
+
+  ipcMain.on('camera-stream-ready', (event, streamInfo) => {
+    console.log('Received camera-stream-ready event:', streamInfo);
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      console.log('Forwarding stream info to camera window');
+      cameraWindow.webContents.send('camera-stream-ready', streamInfo);
+    } else {
+      console.log('Camera window not available to receive stream');
+    }
+  });
+
+  ipcMain.on('hide-camera-window', () => {
+    console.log('Received hide-camera-window event');
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      cameraWindow.hide();
+    }
+  });
+
+  ipcMain.on('set-camera-window-position', (_event, { x, y }) => {
+    if (cameraWindow && !cameraWindow.isDestroyed()) {
+      cameraWindow.setPosition(x, y);
+    }
+  });
+
+  ipcMain.handle('get-display-info', (_event, displayId) => {
+    const display = require('electron').screen.getDisplayMatching({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      displayId: displayId,
+    });
+    return display;
+  });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await checkAndRequestPermissions();
   setupIPC();
   setupTray();
   createMainAppWindow();
-  // createControlsWindow();
-  // createCameraWindow();
 });
 
 // Keep the app running when all windows are closed
@@ -192,7 +292,5 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainAppWindow();
-    // createControlsWindow();
-    // createCameraWindow();
   }
 });

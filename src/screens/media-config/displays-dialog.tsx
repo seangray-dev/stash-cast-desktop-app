@@ -9,7 +9,7 @@ import {
 import { DesktopSource } from '@/hooks/use-media-sources';
 import { MonitorIcon } from 'lucide-react';
 import { useState } from 'react';
-import { useMediaConfig } from './media-config-context';
+import { useMediaConfig } from '../../providers/media-config-provider';
 
 interface DisplaysDialogProps {
   screens: DesktopSource[];

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Cog,
   CommandIcon,
+  MicIcon,
   VideoIcon,
   VideoOffIcon,
 } from 'lucide-react';
@@ -14,10 +15,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import KBD from '@/components/ui/kbd';
+import { Label } from '@/components/ui/label';
 import {
   Tooltip,
   TooltipContent,
@@ -25,24 +29,47 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
+import { useMediaConfig } from '../../providers/media-config-provider';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function CameraSelector() {
-  const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [selectedCamera, setSelectedCamera] = useState<string>('');
+  const {
+    selectedCameraId,
+    setSelectedCameraId,
+    isCameraEnabled,
+    setIsCameraEnabled,
+    isDisplayEnabled,
+  } = useMediaConfig();
   const { data, isPending } = useMediaSources();
+
+  // When component mounts, select the first available camera
+  useEffect(() => {
+    if (data?.videoinputs && data.videoinputs.length > 0 && !selectedCameraId) {
+      console.log('Setting initial camera:', data.videoinputs[0].deviceId);
+      setSelectedCameraId(data.videoinputs[0].deviceId);
+    }
+  }, [data, selectedCameraId, setSelectedCameraId]);
+
+  const handleCameraToggle = () => {
+    console.log('Toggling camera:', {
+      currentlyEnabled: isCameraEnabled,
+      selectedId: selectedCameraId,
+      availableCameras: data?.videoinputs,
+    });
+    setIsCameraEnabled(!isCameraEnabled);
+  };
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'e' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setCameraEnabled((prevCameraEnabled) => !prevCameraEnabled);
+        handleCameraToggle();
       }
     };
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [isCameraEnabled]);
 
   if (isPending) {
     return <MediaSelectorSkeleton type='camera' />;
@@ -56,10 +83,11 @@ export default function CameraSelector() {
             <Button
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-              variant={cameraEnabled ? 'default' : 'destructive'}
-              onClick={() => setCameraEnabled(!cameraEnabled)}>
+              variant={isCameraEnabled ? 'default' : 'destructive'}
+              onClick={handleCameraToggle}
+              disabled={!selectedCameraId}>
               <span className='sr-only'>Toggle camera on/off</span>
-              {cameraEnabled ? (
+              {isCameraEnabled ? (
                 <VideoIcon size={24} />
               ) : (
                 <VideoOffIcon size={24} />
@@ -80,7 +108,7 @@ export default function CameraSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant={cameraEnabled ? 'default' : 'destructive'}
+            variant={isCameraEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>
@@ -93,18 +121,35 @@ export default function CameraSelector() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='center'>
-          <DropdownMenuLabel>Microphone</DropdownMenuLabel>
+          <DropdownMenuLabel>Camera</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {data?.videoinputs.map((device) => (
-            <DropdownMenuItem
-              key={device.deviceId}
-              onSelect={() => setSelectedCamera(device.deviceId)}>
-              <div className='flex items-center gap-2'>
-                <VideoIcon className='size-4' />
-                <span>{device.label || `Camera ${device.deviceId}`}</span>
-              </div>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuRadioGroup
+            value={selectedCameraId || ''}
+            onValueChange={(value) => {
+              console.log('Selected camera changed:', value);
+              setSelectedCameraId(value);
+              // Enable camera when selecting a new one if it's not already enabled
+              if (!isCameraEnabled) {
+                setIsCameraEnabled(true);
+              }
+            }}
+            className='space-y-1.5'>
+            {data?.videoinputs.map((device) => (
+              <DropdownMenuRadioItem
+                key={device.deviceId}
+                value={device.deviceId}
+                id={device.deviceId}>
+                <Label
+                  htmlFor={device.deviceId}
+                  className='font-normal cursor-pointer'>
+                  <div className='flex items-center gap-2'>
+                    <VideoIcon className='size-4' />
+                    <span>{device.label || `Camera ${device.deviceId}`}</span>
+                  </div>
+                </Label>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
           <DropdownMenuItem asChild>
             <Button
               variant='ghost'

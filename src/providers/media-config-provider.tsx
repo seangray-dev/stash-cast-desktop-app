@@ -25,6 +25,12 @@ interface MediaConfigContextType {
   toggleDisplay: () => void;
   isMicrophoneEnabled: boolean;
   setIsMicrophoneEnabled: (enabled: boolean) => void;
+  cameraStream: MediaStream | null;
+  setCameraStream: (stream: MediaStream | null) => void;
+  isCameraEnabled: boolean;
+  setIsCameraEnabled: (enabled: boolean) => void;
+  showCameraWindow: () => void;
+  hideCameraWindow: () => void;
 }
 
 const MediaConfigContext = createContext<MediaConfigContextType | undefined>(
@@ -44,6 +50,8 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [isCameraEnabled, setIsCameraEnabled] = useState(false);
 
   // Handle screen capture stream
   useEffect(() => {
@@ -115,8 +123,101 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
     };
   }, [selectedMicId, isMicrophoneEnabled]);
 
+  // Handle camera stream
+  useEffect(() => {
+    console.log('MediaConfig Camera Effect:', {
+      hasSelectedCamera: !!selectedCameraId,
+      isCameraEnabled,
+      hasExistingStream: !!cameraStream,
+    });
+
+    const cleanup = () => {
+      if (cameraStream) {
+        console.log('Cleanup: Stopping camera stream');
+        cameraStream.getTracks().forEach((track) => {
+          track.stop();
+          console.log('Stopped track:', track.id);
+        });
+        setCameraStream(null);
+      }
+    };
+
+    if (!selectedCameraId || !isCameraEnabled) {
+      cleanup();
+      return;
+    }
+
+    const startCamera = async () => {
+      try {
+        console.log('Attempting to start camera with:', {
+          deviceId: selectedCameraId,
+        });
+
+        // Clean up any existing stream before creating a new one
+        cleanup();
+
+        const stream = await window.navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: selectedCameraId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        console.log('Camera stream obtained:', {
+          tracks: stream.getTracks().map((t) => ({
+            kind: t.kind,
+            enabled: t.enabled,
+            id: t.id,
+          })),
+        });
+
+        setCameraStream(stream);
+
+        // Only show camera window if we have a screen stream
+        if (isDisplayEnabled) {
+          console.log('Showing camera window due to display being enabled');
+          window.ipcRenderer.send('show-camera-window');
+        }
+      } catch (error) {
+        console.error('Error capturing camera:', error);
+        setIsCameraEnabled(false);
+      }
+    };
+
+    startCamera();
+
+    return cleanup;
+  }, [selectedCameraId, isCameraEnabled]);
+
+  // Handle camera window visibility and stream based on display state
+  useEffect(() => {
+    if (isDisplayEnabled && isCameraEnabled && cameraStream) {
+      console.log('Showing camera window and sending stream ID');
+      const videoTrack = cameraStream.getVideoTracks()[0];
+      if (videoTrack) {
+        window.ipcRenderer.send('camera-stream-ready', {
+          streamId: videoTrack.id,
+          settings: videoTrack.getSettings(),
+        });
+        window.ipcRenderer.send('show-camera-window');
+      }
+    } else {
+      console.log('Hiding camera window');
+      window.ipcRenderer.send('hide-camera-window');
+    }
+  }, [isDisplayEnabled, isCameraEnabled, cameraStream]);
+
   const toggleDisplay = async () => {
     setIsDisplayEnabled(!isDisplayEnabled);
+  };
+
+  const showCameraWindow = () => {
+    window.ipcRenderer.send('show-camera-window');
+  };
+
+  const hideCameraWindow = () => {
+    window.ipcRenderer.send('hide-camera-window');
   };
 
   return (
@@ -139,6 +240,12 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
         toggleDisplay,
         isMicrophoneEnabled,
         setIsMicrophoneEnabled,
+        cameraStream,
+        setCameraStream,
+        isCameraEnabled,
+        setIsCameraEnabled,
+        showCameraWindow,
+        hideCameraWindow,
       }}>
       {children}
     </MediaConfigContext.Provider>
