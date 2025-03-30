@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import {
   ChevronDown,
@@ -14,10 +14,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import KBD from '@/components/ui/kbd';
+import { Label } from '@/components/ui/label';
 import {
   Tooltip,
   TooltipContent,
@@ -25,24 +28,29 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
+import { useMediaConfig } from './media-config-context';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function MicSelector() {
-  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
-  const [selectedMicrophone, setSelectedMicrophone] = useState<string>('');
+  const {
+    selectedMicId,
+    setSelectedMicId,
+    isMicrophoneEnabled,
+    setIsMicrophoneEnabled,
+  } = useMediaConfig();
   const { data, isPending } = useMediaSources();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'd' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setMicrophoneEnabled((prevMicrophoneEnabled) => !prevMicrophoneEnabled);
+        setIsMicrophoneEnabled(!isMicrophoneEnabled);
       }
     };
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [setIsMicrophoneEnabled]);
 
   if (isPending) {
     return <MediaSelectorSkeleton type='microphone' />;
@@ -56,10 +64,10 @@ export default function MicSelector() {
             <Button
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-              variant={microphoneEnabled ? 'default' : 'destructive'}
-              onClick={() => setMicrophoneEnabled(!microphoneEnabled)}>
+              variant={isMicrophoneEnabled ? 'default' : 'destructive'}
+              onClick={() => setIsMicrophoneEnabled(!isMicrophoneEnabled)}>
               <span className='sr-only'>Toggle microphone on/off</span>
-              {microphoneEnabled ? (
+              {isMicrophoneEnabled ? (
                 <MicIcon size={24} />
               ) : (
                 <MicOffIcon size={24} />
@@ -80,7 +88,7 @@ export default function MicSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant={microphoneEnabled ? 'default' : 'destructive'}
+            variant={isMicrophoneEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>
@@ -92,24 +100,39 @@ export default function MicSelector() {
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='center'>
-          <DropdownMenuLabel>Microphone</DropdownMenuLabel>
+        <DropdownMenuContent align='center' className='min-w-[220px]'>
+          <DropdownMenuLabel>Select Microphone</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {data?.audioinputs.map((device) => (
-            <DropdownMenuItem
-              key={device.deviceId}
-              onSelect={() => setSelectedMicrophone(device.deviceId)}>
-              <div className='flex items-center gap-2'>
-                <MicIcon className='size-4' />
-                <span>{device.label || `Microphone ${device.deviceId}`}</span>
-              </div>
-            </DropdownMenuItem>
-          ))}
+          <div className='p-2'>
+            <DropdownMenuRadioGroup
+              value={selectedMicId || ''}
+              onValueChange={setSelectedMicId}
+              className='space-y-1.5'>
+              {data?.audioinputs.map((device) => (
+                <DropdownMenuRadioItem
+                  key={device.deviceId}
+                  value={device.deviceId}
+                  id={device.deviceId}>
+                  <Label
+                    htmlFor={device.deviceId}
+                    className='font-normal cursor-pointer'>
+                    <div className='flex items-center gap-2'>
+                      <MicIcon className='size-4' />
+                      <span>
+                        {device.label || `Microphone ${device.deviceId}`}
+                      </span>
+                    </div>
+                  </Label>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </div>
+          <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Button
               variant='ghost'
               className='w-full justify-start font-normal'>
-              <Cog size={16} aria-hidden='true' />
+              <Cog size={16} aria-hidden='true' className='mr-2' />
               Settings
             </Button>
           </DropdownMenuItem>

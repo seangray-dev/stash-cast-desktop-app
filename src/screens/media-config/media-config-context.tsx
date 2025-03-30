@@ -14,6 +14,8 @@ interface MediaConfigContextType {
   setScreenStream: (stream: MediaStream | null) => void;
   selectedMicId: string | null;
   setSelectedMicId: (id: string | null) => void;
+  microphoneStream: MediaStream | null;
+  setMicrophoneStream: (stream: MediaStream | null) => void;
   selectedCameraId: string | null;
   setSelectedCameraId: (id: string | null) => void;
   isRecording: boolean;
@@ -21,6 +23,8 @@ interface MediaConfigContextType {
   isDisplayEnabled: boolean;
   setIsDisplayEnabled: (enabled: boolean) => void;
   toggleDisplay: () => void;
+  isMicrophoneEnabled: boolean;
+  setIsMicrophoneEnabled: (enabled: boolean) => void;
 }
 
 const MediaConfigContext = createContext<MediaConfigContextType | undefined>(
@@ -34,6 +38,10 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isDisplayEnabled, setIsDisplayEnabled] = useState(false);
   const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(
+    null
+  );
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -74,6 +82,39 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
     };
   }, [selectedScreen, isDisplayEnabled]);
 
+  // Handle microphone stream
+  useEffect(() => {
+    if (!selectedMicId || !isMicrophoneEnabled) {
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach((track) => track.stop());
+        setMicrophoneStream(null);
+      }
+      return;
+    }
+
+    const startMicrophone = async () => {
+      try {
+        const stream = await window.navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedMicId,
+          },
+        });
+        setMicrophoneStream(stream);
+      } catch (error) {
+        console.error('Error capturing microphone:', error);
+        setIsMicrophoneEnabled(false);
+      }
+    };
+
+    startMicrophone();
+
+    return () => {
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [selectedMicId, isMicrophoneEnabled]);
+
   const toggleDisplay = async () => {
     setIsDisplayEnabled(!isDisplayEnabled);
   };
@@ -87,6 +128,8 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
         setScreenStream,
         selectedMicId,
         setSelectedMicId,
+        microphoneStream,
+        setMicrophoneStream,
         selectedCameraId,
         setSelectedCameraId,
         isRecording,
@@ -94,6 +137,8 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
         isDisplayEnabled,
         setIsDisplayEnabled,
         toggleDisplay,
+        isMicrophoneEnabled,
+        setIsMicrophoneEnabled,
       }}>
       {children}
     </MediaConfigContext.Provider>
