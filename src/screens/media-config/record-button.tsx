@@ -44,6 +44,7 @@ export default function RecordButton() {
         <DropdownMenuTrigger asChild>
           <Button
             disabled={isRecording}
+            variant={isRecording ? 'destructive' : 'default'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>

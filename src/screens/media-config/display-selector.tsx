@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   ChevronDown,
   Cog,
+  CommandIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
   SquareDashedIcon,
@@ -17,6 +18,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import KBD from '@/components/ui/kbd';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
 import DisplaysDialog from './displays-dialog';
 import MediaSelectorSkeleton from './media-selector-skeleton';
@@ -37,23 +45,51 @@ export default function DisplaySelector() {
     return <MediaSelectorSkeleton type='display' />;
   }
 
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setDisplayEnabled((prevDisplayEnabled) => !prevDisplayEnabled);
+      }
+    };
+
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
+
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
-      <Button
-        size={'icon'}
-        className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-        variant={displayEnabled ? 'default' : 'destructive'}
-        onClick={() => setDisplayEnabled(!displayEnabled)}>
-        <span className='sr-only'>Toggle display on/off</span>
-        {displayEnabled ? (
-          <ScreenShareIcon size={24} />
-        ) : (
-          <ScreenShareOffIcon size={24} />
-        )}
-      </Button>
+      <TooltipProvider delayDuration={100}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size={'icon'}
+              className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+              variant={displayEnabled ? 'default' : 'destructive'}
+              onClick={() => setDisplayEnabled(!displayEnabled)}>
+              <span className='sr-only'>Toggle display on/off</span>
+              {displayEnabled ? (
+                <ScreenShareIcon size={24} />
+              ) : (
+                <ScreenShareOffIcon size={24} />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className='flex items-center gap-2'>
+              Toggle display on/off
+              <KBD>
+                <CommandIcon size={8} />
+                <span>S</span>
+              </KBD>
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            variant={displayEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>

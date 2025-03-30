@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { ChevronDown, Cog, VideoIcon, VideoOffIcon } from 'lucide-react';
+import {
+  ChevronDown,
+  Cog,
+  CommandIcon,
+  VideoIcon,
+  VideoOffIcon,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +17,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import KBD from '@/components/ui/kbd';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
 import MediaSelectorSkeleton from './media-selector-skeleton';
 
@@ -23,19 +36,51 @@ export default function CameraSelector() {
     return <MediaSelectorSkeleton type='camera' />;
   }
 
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'e' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCameraEnabled((prevCameraEnabled) => !prevCameraEnabled);
+      }
+    };
+
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
+
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
-      <Button
-        size={'icon'}
-        className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-        variant={cameraEnabled ? 'default' : 'destructive'}
-        onClick={() => setCameraEnabled(!cameraEnabled)}>
-        <span className='sr-only'>Toggle camera on/off</span>
-        {cameraEnabled ? <VideoIcon size={24} /> : <VideoOffIcon size={24} />}
-      </Button>
+      <TooltipProvider delayDuration={100}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size={'icon'}
+              className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
+              variant={cameraEnabled ? 'default' : 'destructive'}
+              onClick={() => setCameraEnabled(!cameraEnabled)}>
+              <span className='sr-only'>Toggle camera on/off</span>
+              {cameraEnabled ? (
+                <VideoIcon size={24} />
+              ) : (
+                <VideoOffIcon size={24} />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className='flex items-center gap-2'>
+              Toggle camera on/off
+              <KBD>
+                <CommandIcon size={8} />
+                <span>E</span>
+              </KBD>
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            variant={cameraEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>
