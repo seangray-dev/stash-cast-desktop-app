@@ -3,7 +3,7 @@ import { ClerkLoading, SignedIn, useUser } from '@clerk/clerk-react';
 import { useQuery } from 'convex/react';
 import { useState } from 'react';
 import Loader from './loader';
-import { MediaConfig } from './media-config';
+import { MediaConfig } from './media-config/media-config';
 
 export default function Widget() {
   const [profile, setProfile] = useState<any>(null);

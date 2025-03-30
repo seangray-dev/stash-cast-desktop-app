@@ -9,15 +9,18 @@ const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let tray = null;
-let mediaSelectorWindow = null;
-function createMediaSelector() {
-  mediaSelectorWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
+let mainAppWindow = null;
+function createMainAppWindow() {
+  mainAppWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 320,
+    minHeight: 600,
+    titleBarStyle: "default",
     frame: false,
-    resizable: false,
-    movable: false,
-    show: false,
+    resizable: true,
+    movable: true,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
       nodeIntegration: false,
@@ -25,11 +28,9 @@ function createMediaSelector() {
     }
   });
   if (VITE_DEV_SERVER_URL) {
-    mediaSelectorWindow.loadURL(`${VITE_DEV_SERVER_URL}/media-selector`);
+    mainAppWindow.loadURL(`${VITE_DEV_SERVER_URL}`);
   } else {
-    mediaSelectorWindow.loadFile(
-      path.join(RENDERER_DIST, "media-selector.html")
-    );
+    mainAppWindow.loadFile(path.join(RENDERER_DIST, "index.html"));
   }
 }
 function setupTray() {
@@ -39,8 +40,8 @@ function setupTray() {
   tray = new Tray(icon);
   tray.setToolTip(applicationName);
   tray.on("click", () => {
-    if (!(mediaSelectorWindow == null ? void 0 : mediaSelectorWindow.isVisible())) {
-      mediaSelectorWindow == null ? void 0 : mediaSelectorWindow.show();
+    if (!(mainAppWindow == null ? void 0 : mainAppWindow.isVisible())) {
+      mainAppWindow == null ? void 0 : mainAppWindow.show();
     }
   });
 }
@@ -53,16 +54,19 @@ function setupIPC() {
     return sources;
   });
   ipcMain.on("start-recording", () => {
-    mediaSelectorWindow == null ? void 0 : mediaSelectorWindow.hide();
+    mainAppWindow == null ? void 0 : mainAppWindow.hide();
   });
   ipcMain.on("stop-recording", () => {
-    mediaSelectorWindow == null ? void 0 : mediaSelectorWindow.show();
+    mainAppWindow == null ? void 0 : mainAppWindow.show();
+  });
+  ipcMain.on("close-app", () => {
+    app.quit();
   });
 }
 app.whenReady().then(() => {
   setupIPC();
   setupTray();
-  createMediaSelector();
+  createMainAppWindow();
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -71,7 +75,7 @@ app.on("window-all-closed", () => {
 });
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createMediaSelector();
+    createMainAppWindow();
   }
 });
 export {

@@ -1,5 +1,5 @@
 import { CameraIcon, MicIcon, MonitorIcon } from 'lucide-react';
-import { Skeleton } from '../ui/skeleton';
+import { Skeleton } from '../../ui/skeleton';
 
 export default function MediaSelectorSkeleton({
   type,

@@ -82,11 +82,11 @@
   }
 }
 
-.draggable {
+.drag {
   -webkit-app-region: drag;
 }
 
-.non-draggable {
+.no-drag {
   -webkit-app-region: no-drag;
 }
 

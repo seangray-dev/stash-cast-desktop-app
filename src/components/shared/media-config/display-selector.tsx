@@ -6,15 +6,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useMediaSources } from '@/hooks/use-media-sources';
+import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
 import {
-  AppWindowMacIcon,
-  MonitorIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
   SquareDashedIcon,
 } from 'lucide-react';
+import DisplaysDialog from './displays-dialog';
 import MediaSelectorSkeleton from './media-selector-skeleton';
+import WindowsDialog from './windows-dialog';
 
 export default function DisplaySelector() {
   const { data, isPending } = useMediaSources();
@@ -22,6 +22,11 @@ export default function DisplaySelector() {
   if (isPending) {
     return <MediaSelectorSkeleton type='display' />;
   }
+
+  const displays = data?.displays;
+
+  const screens = displays?.filter(isScreen) || [];
+  const windows = displays?.filter(isWindow) || [];
 
   return (
     <DropdownMenu>
@@ -36,14 +41,12 @@ export default function DisplaySelector() {
       <DropdownMenuContent>
         <DropdownMenuGroup>
           {/* When selected opens a dialog. If detected multiple displays, select which display to capture fullscreen of. If only one display, capture fullscreen of that display */}
-          <DropdownMenuItem className='flex items-center gap-2'>
-            <MonitorIcon className='w-size-4' />
-            Full Screen
+          <DropdownMenuItem asChild>
+            <DisplaysDialog screens={screens} />
           </DropdownMenuItem>
           {/* When selected opens a dialog. If detected multiple displays, first select display, then select which window within that display to capture */}
-          <DropdownMenuItem className='flex items-center gap-2'>
-            <AppWindowMacIcon className='w-size-4' />
-            Specific Window
+          <DropdownMenuItem asChild>
+            <WindowsDialog windows={windows} />
           </DropdownMenuItem>
           {/* When Selcted closes the dropdown and allows users to position the window capture area */}
           <DropdownMenuItem className='flex items-center gap-2'>

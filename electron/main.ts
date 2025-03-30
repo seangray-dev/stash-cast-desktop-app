@@ -34,18 +34,21 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 // Window references
 let tray: Tray | null = null;
-let mediaSelectorWindow: BrowserWindow | null = null;
+let mainAppWindow: BrowserWindow | null = null;
 let controlsWindow: BrowserWindow | null = null;
 let cameraWindow: BrowserWindow | null = null;
 
-function createMediaSelector() {
-  mediaSelectorWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
+function createMainAppWindow() {
+  mainAppWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 320,
+    minHeight: 600,
+    titleBarStyle: 'default',
     frame: false,
-    resizable: false,
-    movable: false,
-    show: false,
+    resizable: true,
+    movable: true,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
@@ -54,11 +57,9 @@ function createMediaSelector() {
   });
 
   if (VITE_DEV_SERVER_URL) {
-    mediaSelectorWindow.loadURL(`${VITE_DEV_SERVER_URL}/media-selector`);
+    mainAppWindow.loadURL(`${VITE_DEV_SERVER_URL}`);
   } else {
-    mediaSelectorWindow.loadFile(
-      path.join(RENDERER_DIST, 'media-selector.html')
-    );
+    mainAppWindow.loadFile(path.join(RENDERER_DIST, 'index.html'));
   }
 }
 
@@ -114,8 +115,8 @@ function setupTray() {
   tray.setToolTip(applicationName);
 
   tray.on('click', () => {
-    if (!mediaSelectorWindow?.isVisible()) {
-      mediaSelectorWindow?.show();
+    if (!mainAppWindow?.isVisible()) {
+      mainAppWindow?.show();
     }
   });
 }
@@ -130,23 +131,29 @@ function setupIPC() {
   });
 
   ipcMain.on('start-recording', () => {
-    mediaSelectorWindow?.hide();
+    mainAppWindow?.hide();
     controlsWindow?.show();
   });
 
   ipcMain.on('stop-recording', () => {
     controlsWindow?.hide();
-    mediaSelectorWindow?.show();
+    mainAppWindow?.show();
+  });
+
+  ipcMain.on('close-app', () => {
+    app.quit();
   });
 }
 
 app.whenReady().then(() => {
   setupIPC();
   setupTray();
-  createMediaSelector();
+  createMainAppWindow();
   // createControlsWindow();
   // createCameraWindow();
 });
+
+
 
 // Keep the app running when all windows are closed
 app.on('window-all-closed', () => {
@@ -158,7 +165,7 @@ app.on('window-all-closed', () => {
 // Handle macOS dock icon clicks
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createMediaSelector();
+    createMainAppWindow();
     // createControlsWindow();
     // createCameraWindow();
   }
