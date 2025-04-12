@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Cog,
   CommandIcon,
+  Loader2,
   ScreenShareIcon,
   ScreenShareOffIcon,
   SquareDashedIcon,
@@ -28,7 +29,6 @@ import {
 import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
 import { useMediaConfig } from '../../providers/media-config-provider';
 import DisplaysDialog from './displays-dialog';
-import MediaSelectorSkeleton from './media-selector-skeleton';
 import WindowsDialog from './windows-dialog';
 
 export default function DisplaySelector() {
@@ -74,17 +74,8 @@ export default function DisplaySelector() {
     return () => document.removeEventListener('keydown', down);
   }, [selectedScreen, screenStream]);
 
-  // Early returns after all hooks
-  if (!data) {
-    return null;
-  }
-
-  const screens = data.displays.filter(isScreen);
-  const windows = data.displays.filter(isWindow);
-
-  if (isPending) {
-    return <MediaSelectorSkeleton type='display' />;
-  }
+  const screens = data?.displays.filter(isScreen) ?? [];
+  const windows = data?.displays.filter(isWindow) ?? [];
 
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
@@ -96,12 +87,18 @@ export default function DisplaySelector() {
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={screenStream ? 'default' : 'destructive'}
               onClick={handleDisplayToggle}
-              disabled={!selectedScreen}>
+              disabled={!selectedScreen || isPending}>
               <span className='sr-only'>Toggle display on/off</span>
-              {screenStream ? (
-                <ScreenShareIcon size={24} />
+              {isPending ? (
+                <Loader2 className='size-4 animate-spin' />
               ) : (
-                <ScreenShareOffIcon size={24} />
+                <>
+                  {screenStream ? (
+                    <ScreenShareIcon size={24} />
+                  ) : (
+                    <ScreenShareOffIcon size={24} />
+                  )}
+                </>
               )}
             </Button>
           </TooltipTrigger>
@@ -119,6 +116,7 @@ export default function DisplaySelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            disabled={isPending}
             variant={screenStream ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'

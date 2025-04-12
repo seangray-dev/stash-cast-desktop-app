@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import {
   ChevronDown,
   Cog,
   CommandIcon,
-  MicIcon,
+  Loader2,
   VideoIcon,
   VideoOffIcon,
 } from 'lucide-react';
@@ -30,7 +30,6 @@ import {
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
 import { useMediaConfig } from '../../providers/media-config-provider';
-import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function CameraSelector() {
   const {
@@ -38,7 +37,6 @@ export default function CameraSelector() {
     setSelectedCameraId,
     isCameraEnabled,
     setIsCameraEnabled,
-    isDisplayEnabled,
   } = useMediaConfig();
   const { data, isPending } = useMediaSources();
 
@@ -71,10 +69,6 @@ export default function CameraSelector() {
     return () => document.removeEventListener('keydown', down);
   }, [isCameraEnabled]);
 
-  if (isPending) {
-    return <MediaSelectorSkeleton type='camera' />;
-  }
-
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
       <TooltipProvider delayDuration={100}>
@@ -85,12 +79,18 @@ export default function CameraSelector() {
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={isCameraEnabled ? 'default' : 'destructive'}
               onClick={handleCameraToggle}
-              disabled={!selectedCameraId}>
+              disabled={!selectedCameraId || isPending}>
               <span className='sr-only'>Toggle camera on/off</span>
-              {isCameraEnabled ? (
-                <VideoIcon size={24} />
+              {isPending ? (
+                <Loader2 className='size-4 animate-spin' />
               ) : (
-                <VideoOffIcon size={24} />
+                <>
+                  {isCameraEnabled ? (
+                    <VideoIcon size={24} />
+                  ) : (
+                    <VideoOffIcon size={24} />
+                  )}
+                </>
               )}
             </Button>
           </TooltipTrigger>
@@ -108,6 +108,7 @@ export default function CameraSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            disabled={isPending}
             variant={isCameraEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
@@ -126,7 +127,6 @@ export default function CameraSelector() {
           <DropdownMenuRadioGroup
             value={selectedCameraId || ''}
             onValueChange={(value) => {
-              console.log('Selected camera changed:', value);
               setSelectedCameraId(value);
               // Enable camera when selecting a new one if it's not already enabled
               if (!isCameraEnabled) {

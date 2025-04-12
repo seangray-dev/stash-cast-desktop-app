@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Cog,
   CommandIcon,
+  Loader2,
   MicIcon,
   MicOffIcon,
 } from 'lucide-react';
@@ -29,7 +30,6 @@ import {
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
 import { useMediaConfig } from '../../providers/media-config-provider';
-import MediaSelectorSkeleton from './media-selector-skeleton';
 
 export default function MicSelector() {
   const {
@@ -52,25 +52,28 @@ export default function MicSelector() {
     return () => document.removeEventListener('keydown', down);
   }, [setIsMicrophoneEnabled]);
 
-  if (isPending) {
-    return <MediaSelectorSkeleton type='microphone' />;
-  }
-
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              disabled={isPending}
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={isMicrophoneEnabled ? 'default' : 'destructive'}
               onClick={() => setIsMicrophoneEnabled(!isMicrophoneEnabled)}>
               <span className='sr-only'>Toggle microphone on/off</span>
-              {isMicrophoneEnabled ? (
-                <MicIcon size={24} />
+              {isPending ? (
+                <Loader2 className='size-4 animate-spin' />
               ) : (
-                <MicOffIcon size={24} />
+                <>
+                  {isMicrophoneEnabled ? (
+                    <MicIcon size={24} />
+                  ) : (
+                    <MicOffIcon size={24} />
+                  )}
+                </>
               )}
             </Button>
           </TooltipTrigger>
@@ -88,6 +91,7 @@ export default function MicSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            disabled={isPending}
             variant={isMicrophoneEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
