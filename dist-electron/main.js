@@ -370,6 +370,20 @@ function setupTray() {
   });
 }
 function setupIPC() {
+  ipcMain.handle("get-screens", async (_event) => {
+    const screens = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: { width: 150, height: 150 }
+    });
+    return screens.map((screen) => ({
+      id: screen.id,
+      name: screen.name,
+      type: "screen",
+      thumbnail: screen.thumbnail.toDataURL(),
+      display_id: screen.display_id,
+      appIcon: screen.appIcon
+    }));
+  });
   ipcMain.handle("getSources", async (_event) => {
     const screens = await desktopCapturer.getSources({
       types: ["screen"],

@@ -6,9 +6,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { DesktopSource } from '@/hooks/use-media-sources';
+import { DesktopSource } from '@/types/media';
 import { MonitorIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMediaConfig } from '../../providers/media-config-provider';
 
 interface DisplaysDialogProps {
@@ -16,8 +16,17 @@ interface DisplaysDialogProps {
 }
 
 export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
-  const { setSelectedScreen, setIsDisplayEnabled } = useMediaConfig();
+  const { selectedScreen, setSelectedScreen, setIsDisplayEnabled } =
+    useMediaConfig();
   const [open, setOpen] = useState(false);
+
+  // Auto-select first screen if none selected
+  useEffect(() => {
+    if (screens.length > 0 && !selectedScreen) {
+      setSelectedScreen(screens[0]);
+      setIsDisplayEnabled(true);
+    }
+  }, [screens, selectedScreen, setSelectedScreen, setIsDisplayEnabled]);
 
   const handleSelect = (screen: DesktopSource) => {
     setSelectedScreen(screen);
@@ -43,7 +52,7 @@ export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
           {screens.map((screen) => (
             <Button
               key={screen.id}
-              variant='outline'
+              variant={selectedScreen?.id === screen.id ? 'default' : 'outline'}
               className='flex flex-col items-center gap-2 p-2 h-auto'
               onClick={() => handleSelect(screen)}>
               <div className='relative w-full aspect-video bg-background'>

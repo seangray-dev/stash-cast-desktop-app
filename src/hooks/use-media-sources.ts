@@ -1,18 +1,5 @@
+import { DesktopSource, MediaSources } from '@/types/media';
 import { useQuery } from '@tanstack/react-query';
-
-export interface DesktopSource {
-  id: string;
-  name: string;
-  thumbnail: Electron.NativeImage;
-  display_id: string;
-  appIcon: Electron.NativeImage;
-}
-
-interface MediaSources {
-  displays: DesktopSource[];
-  audioinputs: MediaDeviceInfo[];
-  videoinputs: MediaDeviceInfo[];
-}
 
 // Helper to normalize screen names across platforms
 function normalizeScreenName(name: string): string {
@@ -31,36 +18,47 @@ function normalizeWindowName(name: string): string {
 }
 
 // Helper to check if a source is a screen
-export function isScreen(source: DesktopSource): boolean {
-  return source.id.startsWith('screen:');
+export function isScreen(
+  source: DesktopSource
+): source is DesktopSource & { type: 'screen' } {
+  return source.type === 'screen';
 }
 
 // Helper to check if a source is a window
-export function isWindow(source: DesktopSource): boolean {
-  return source.id.startsWith('window:');
+export function isWindow(
+  source: DesktopSource
+): source is DesktopSource & { type: 'window' } {
+  return source.type === 'window';
 }
-
-export const getMediaSources = async (): Promise<MediaSources> => {
-  const rawDisplays = await window.ipcRenderer.invoke('getSources');
-
-  // Normalize the display sources
-  const displays = rawDisplays.map((display: DesktopSource) => ({
-    ...display,
-    name: isScreen(display)
-      ? normalizeScreenName(display.name)
-      : normalizeWindowName(display.name),
-  }));
-
-  const devices = await window.navigator.mediaDevices.enumerateDevices();
-  const audioinputs = devices.filter((device) => device.kind === 'audioinput');
-  const videoinputs = devices.filter((device) => device.kind === 'videoinput');
-
-  return { displays, audioinputs, videoinputs };
-};
 
 export function useMediaSources() {
   return useQuery({
     queryKey: ['media-sources'],
-    queryFn: getMediaSources,
+    queryFn: async () => {
+      const [screens, mics, cameras] = await Promise.all([
+        window.ipcRenderer.invoke('get-screens') as Promise<DesktopSource[]>,
+        navigator.mediaDevices
+          .enumerateDevices()
+          .then((devices) =>
+            devices.filter((device) => device.kind === 'audioinput')
+          ),
+        navigator.mediaDevices
+          .enumerateDevices()
+          .then((devices) =>
+            devices.filter((device) => device.kind === 'videoinput')
+          ),
+      ]);
+
+      return {
+        displays: screens.map((display) => ({
+          ...display,
+          name: isScreen(display)
+            ? normalizeScreenName(display.name)
+            : normalizeWindowName(display.name),
+        })),
+        audioinputs: mics,
+        videoinputs: cameras,
+      } as MediaSources;
+    },
   });
 }

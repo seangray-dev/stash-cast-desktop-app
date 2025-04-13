@@ -20,5 +20,5 @@
 - [ ] Save as workspace when settings are changed 
 
 - [x] Remove Auth
-- [ ] EASY DEASULTS
+- [ ] EASY DEFAULTS
 - [ ] Afer recording, open finder and select the file

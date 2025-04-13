@@ -34,9 +34,9 @@ import { useMediaConfig } from '../../providers/media-config-provider';
 export default function CameraSelector() {
   const {
     selectedCameraId,
-    setSelectedCameraId,
     isCameraEnabled,
     setIsCameraEnabled,
+    handleCameraChange,
   } = useMediaConfig();
   const { data, isPending } = useMediaSources();
 
@@ -44,9 +44,9 @@ export default function CameraSelector() {
   useEffect(() => {
     if (data?.videoinputs && data.videoinputs.length > 0 && !selectedCameraId) {
       console.log('Setting initial camera:', data.videoinputs[0].deviceId);
-      setSelectedCameraId(data.videoinputs[0].deviceId);
+      handleCameraChange(data.videoinputs[0].deviceId);
     }
-  }, [data, selectedCameraId, setSelectedCameraId]);
+  }, [data, selectedCameraId, handleCameraChange]);
 
   const handleCameraToggle = () => {
     console.log('Toggling camera:', {
@@ -105,6 +105,7 @@ export default function CameraSelector() {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -126,13 +127,7 @@ export default function CameraSelector() {
           <DropdownMenuSeparator />
           <DropdownMenuRadioGroup
             value={selectedCameraId || ''}
-            onValueChange={(value) => {
-              setSelectedCameraId(value);
-              // Enable camera when selecting a new one if it's not already enabled
-              if (!isCameraEnabled) {
-                setIsCameraEnabled(true);
-              }
-            }}
+            onValueChange={handleCameraChange}
             className='space-y-1.5'>
             {data?.videoinputs.map((device) => (
               <DropdownMenuRadioItem
