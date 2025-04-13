@@ -1,7 +1,3 @@
-import { useState } from 'react';
-
-import { ChevronDown, CircleDotIcon, CircleStopIcon, Cog } from 'lucide-react';
-
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,19 +10,71 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ChevronDown, CircleDotIcon, CircleStopIcon, Cog } from 'lucide-react';
+import { useState } from 'react';
+import { useMediaConfig } from '../../providers/media-config-provider';
+import { RecordingService } from '../../services/recording-service';
+
+const recordingService = new RecordingService();
 
 export default function RecordButton() {
   const [isRecording, setIsRecording] = useState(false);
   const [saveLocation, setSaveLocation] = useState('desktop');
   const [timer, setTimer] = useState('none');
   const [showMouseClicks, setShowMouseClicks] = useState(false);
+  const {
+    screenStream,
+    cameraStream,
+    microphoneStream,
+    isDisplayEnabled,
+    isCameraEnabled,
+    isMicrophoneEnabled,
+  } = useMediaConfig();
+
+  const handleRecordToggle = async () => {
+    try {
+      if (!isRecording) {
+        // Start recording
+        const videoStream = screenStream || cameraStream;
+        if (!videoStream) {
+          console.error('No video stream available for recording');
+          return;
+        }
+
+        const success = await recordingService.startRecording(
+          videoStream,
+          isMicrophoneEnabled ? microphoneStream : null
+        );
+
+        if (success) {
+          setIsRecording(true);
+        }
+      } else {
+        // Stop recording immediately
+        recordingService.stopRecording();
+        setIsRecording(false);
+
+        // Then handle saving
+        const filePath = await recordingService.saveRecording();
+        if (filePath) {
+          console.log('Recording saved to:', filePath);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling recording:', error);
+      setIsRecording(false);
+    }
+  };
+
+  const hasVideoSource = isDisplayEnabled || isCameraEnabled;
 
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
       <Button
         className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
         variant={!isRecording ? 'default' : 'destructive'}
-        onClick={() => setIsRecording(!isRecording)}>
+        onClick={handleRecordToggle}
+        disabled={!hasVideoSource}>
         <span className='sr-only'>Toggle record on/off</span>
         {!isRecording ? (
           <>

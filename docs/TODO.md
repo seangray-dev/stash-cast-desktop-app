@@ -10,5 +10,7 @@
 - [ ] Camera: Fix display (make a circle no border)
 - [ ] Camera: settings menu (blur, effects, etc.)
 - [ ] Record: Impement recording and saving (save to users selected folder + compressed file using ffmpeg)
+- [ ] Record: Pause/Resume recording functionality
 - [ ] Record: Show Mouse clicks option
-- [ ] Record: Implement timer
+- [ ] Record: Implement countdown timer
+- [ ] Record: Implement recording timer
