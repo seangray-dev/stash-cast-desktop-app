@@ -1,50 +1,99 @@
-import { db, type Workspace, type WorkspaceSettings } from './db';
+import { UserDevice, Workspace, WorkspaceSettings } from '@/types/workspace';
+import { db, resetDatabase } from './db';
 
-export async function createDefaultWorkspace(
+const getMachineId = async () => {
+  try {
+    const id = await window.ipcRenderer.invoke('get-machine-id');
+    if (!id) {
+      throw new Error('Failed to get machine ID');
+    }
+    return id;
+  } catch (error) {
+    console.error('Error getting machine ID:', error);
+    throw error;
+  }
+};
+
+const getHostname = async () => {
+  try {
+    return await window.ipcRenderer.invoke('get-hostname');
+  } catch (error) {
+    console.error('Error getting hostname:', error);
+    return 'Unknown Device';
+  }
+};
+
+export async function initializeFirstTimeUser(
   screens: any[],
   mics: MediaDeviceInfo[],
   cameras: MediaDeviceInfo[]
-): Promise<{ workspace: Workspace; settings: WorkspaceSettings }> {
-  console.log('📝 Creating default workspace with:', {
-    screens: screens.length,
-    mics: mics.length,
-    cameras: cameras.length,
-  });
+): Promise<{ workspace: Workspace; device: UserDevice }> {
+  // Reset database to ensure clean state
+  await resetDatabase();
 
-  const defaultWorkspace = await db.workspaces.add({
-    name: 'Default Workspace',
+  // Create device first
+  const deviceId = await getMachineId();
+  const hostname = await getHostname();
+
+  const device: UserDevice = {
+    id: deviceId,
+    name: hostname,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as Workspace);
-
-  console.log('✅ Created default workspace:', defaultWorkspace);
-
-  const settings = await db.workspaceSettings.add({
-    workspaceId: defaultWorkspace,
-    selectedScreenId: screens.length > 0 ? screens[0].id : null,
-    selectedMicId: mics.length > 0 ? mics[0].deviceId : null,
-    selectedCameraId: cameras.length > 0 ? cameras[0].deviceId : null,
-    isMicrophoneEnabled: true,
-    isCameraEnabled: true,
-    isDisplayEnabled: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as WorkspaceSettings);
-
-  console.log('⚙️ Created default settings:', settings);
-
-  const workspace = await db.workspaces.get(defaultWorkspace);
-  const workspaceSettings = await db.workspaceSettings.get(settings);
-
-  console.log('🎯 Returning workspace and settings:', {
-    workspace,
-    settings: workspaceSettings,
-  });
-
-  return {
-    workspace: workspace!,
-    settings: workspaceSettings!,
   };
+
+  // Find first available screen (not window)
+  const defaultScreen =
+    screens.find((d) => d.type === 'screen') || screens[0] || null;
+  const defaultMic = mics[0] || null;
+  const defaultCamera = cameras[0] || null;
+
+  // Create default settings
+  const settings: WorkspaceSettings = {
+    selectedScreenId: defaultScreen?.id || null,
+    selectedMicId: defaultMic?.deviceId || null,
+    selectedCameraId: defaultCamera?.deviceId || null,
+    defaultDisplayEnabled: true,
+    defaultMicEnabled: true,
+    defaultCameraEnabled: true,
+    defaultSaveLocation: 'desktop',
+  };
+
+  console.log('Creating workspace with settings:', settings);
+
+  // Create workspace
+  const workspaceToCreate: Omit<Workspace, 'id'> = {
+    name: 'Default Workspace',
+    deviceSettings: {
+      [deviceId]: settings,
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  try {
+    // Add device and workspace in sequence
+    await db.devices.add(device);
+    const workspaceId = await db.workspaces.add(workspaceToCreate);
+    const workspace = { ...workspaceToCreate, id: workspaceId };
+
+    return { workspace, device };
+  } catch (error) {
+    console.error('Error initializing first-time user:', error);
+    throw error;
+  }
+}
+
+export async function createDefaultWorkspace({
+  screens,
+  mics,
+  cameras,
+}: {
+  screens: any[];
+  mics: MediaDeviceInfo[];
+  cameras: MediaDeviceInfo[];
+}) {
+  return initializeFirstTimeUser(screens, mics, cameras);
 }
 
 export async function getCurrentWorkspace(): Promise<Workspace | undefined> {
@@ -53,37 +102,47 @@ export async function getCurrentWorkspace(): Promise<Workspace | undefined> {
 
 export async function getWorkspaceSettings(
   workspaceId: number
-): Promise<WorkspaceSettings | undefined> {
-  return await db.workspaceSettings
-    .where('workspaceId')
-    .equals(workspaceId)
-    .first();
+): Promise<Workspace | undefined> {
+  return await db.workspaces.get(workspaceId);
 }
 
 export async function updateWorkspaceSettings(
   workspaceId: number,
-  settings: {
-    selectedScreenId: string | null;
-    selectedMicId: string | null;
-    selectedCameraId: string | null;
-    isMicrophoneEnabled: boolean;
-    isCameraEnabled: boolean;
-    isDisplayEnabled: boolean;
-  }
+  deviceId: string,
+  settings: Partial<WorkspaceSettings>
 ): Promise<void> {
-  console.log('⚙️ Updating workspace settings:', { workspaceId, settings });
+  console.log('⚙️ Updating workspace settings:', {
+    workspaceId,
+    deviceId,
+    settings,
+  });
 
-  const existingSettings = await db.workspaceSettings
-    .where('workspaceId')
-    .equals(workspaceId)
-    .first();
+  const workspace = await db.workspaces.get(workspaceId);
 
-  if (!existingSettings) {
-    throw new Error('No settings found for workspace');
+  if (!workspace) {
+    throw new Error('Workspace not found');
   }
 
-  await db.workspaceSettings.update(existingSettings.id, {
-    ...settings,
+  const currentDeviceSettings = workspace.deviceSettings[deviceId] || {
+    selectedScreenId: null,
+    selectedMicId: null,
+    selectedCameraId: null,
+    defaultDisplayEnabled: true,
+    defaultMicEnabled: true,
+    defaultCameraEnabled: true,
+    defaultSaveLocation: null,
+  };
+
+  const updatedSettings = {
+    ...workspace.deviceSettings,
+    [deviceId]: {
+      ...currentDeviceSettings,
+      ...settings,
+    },
+  };
+
+  await db.workspaces.update(workspaceId, {
+    deviceSettings: updatedSettings,
     updatedAt: new Date(),
   });
 
@@ -92,23 +151,35 @@ export async function updateWorkspaceSettings(
 
 export async function createNewWorkspace(
   name: string,
-  settings: Omit<
-    WorkspaceSettings,
-    'id' | 'workspaceId' | 'createdAt' | 'updatedAt'
-  >
+  deviceId: string,
+  initialSettings?: Partial<WorkspaceSettings>
 ): Promise<number> {
-  const workspaceId = await db.workspaces.add({
-    name,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as Workspace);
+  const defaultSettings: WorkspaceSettings = {
+    selectedScreenId: null,
+    selectedMicId: null,
+    selectedCameraId: null,
+    defaultDisplayEnabled: true,
+    defaultMicEnabled: true,
+    defaultCameraEnabled: true,
+    defaultSaveLocation: null,
+  };
 
-  await db.workspaceSettings.add({
-    workspaceId,
-    ...settings,
+  // Create workspace without id first
+  const workspaceToCreate = {
+    name,
+    deviceSettings: {
+      [deviceId]: {
+        ...defaultSettings,
+        ...initialSettings,
+      },
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as WorkspaceSettings);
+  };
+
+  console.log('📝 Creating new workspace:', workspaceToCreate);
+  const workspaceId = await db.workspaces.add(workspaceToCreate);
+  console.log('✅ Created workspace with id:', workspaceId);
 
   return workspaceId;
 }
@@ -117,8 +188,51 @@ export async function getAllWorkspaces(): Promise<Workspace[]> {
   return await db.workspaces.orderBy('createdAt').toArray();
 }
 
-export async function getWorkspaceWithSettings(workspaceId: number) {
-  const workspace = await db.workspaces.get(workspaceId);
-  const settings = await getWorkspaceSettings(workspaceId);
-  return workspace && settings ? { workspace, settings } : null;
+export async function getDeviceSettings(
+  workspace: Workspace,
+  deviceId: string
+): Promise<WorkspaceSettings | null> {
+  return workspace.deviceSettings[deviceId] || null;
+}
+
+// Device Operations
+export async function getCurrentDevice(): Promise<UserDevice> {
+  const deviceId = await getMachineId();
+  console.log('🔍 Getting current device with ID:', deviceId);
+
+  const existingDevice = await db.devices.get(deviceId);
+
+  if (existingDevice) {
+    console.log('✅ Found existing device:', existingDevice);
+    return existingDevice;
+  }
+
+  const hostname = await getHostname();
+  const newDevice: UserDevice = {
+    id: deviceId,
+    name: hostname,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  console.log('📝 Creating new device:', newDevice);
+  await db.devices.add(newDevice);
+
+  return newDevice;
+}
+
+export async function updateDeviceName(
+  deviceId: string,
+  name: string
+): Promise<void> {
+  console.log('📝 Updating device name:', { deviceId, name });
+
+  await db.devices.update(deviceId, {
+    name,
+    updatedAt: new Date(),
+  });
+}
+
+export async function getAllDevices(): Promise<UserDevice[]> {
+  return await db.devices.toArray();
 }

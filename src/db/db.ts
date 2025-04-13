@@ -1,42 +1,26 @@
-import Dexie, { type EntityTable } from 'dexie';
+import { UserDevice, Workspace } from '@/types/workspace';
+import Dexie, { type Table } from 'dexie';
 
-interface Workspace {
-  id: number;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
+export class StashCastDB extends Dexie {
+  workspaces!: Table<Workspace, number>;
+  devices!: Table<UserDevice, string>;
+
+  constructor() {
+    super('StashCastDB');
+    this.version(2).stores({
+      workspaces: '++id, &name, deviceSettings, createdAt, updatedAt',
+      devices: '&id, name, createdAt, updatedAt',
+    });
+  }
 }
 
-interface WorkspaceSettings {
-  id: number;
-  workspaceId: number;
-  selectedScreenId: string | null;
-  selectedMicId: string | null;
-  selectedCameraId: string | null;
-  isMicrophoneEnabled: boolean;
-  isCameraEnabled: boolean;
-  isDisplayEnabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+// Delete existing database if it exists and create a new one
+export async function resetDatabase() {
+  const db = new StashCastDB();
+  await db.delete();
+  await db.open();
+  return db;
 }
 
-const db = new Dexie('StashCastDB') as Dexie & {
-  workspaces: EntityTable<
-    Workspace,
-    'id' // primary key
-  >;
-  workspaceSettings: EntityTable<
-    WorkspaceSettings,
-    'id' // primary key
-  >;
-};
-
-// Schema declaration
-db.version(1).stores({
-  workspaces: '++id, name, createdAt, updatedAt',
-  workspaceSettings:
-    '++id, workspaceId, selectedScreenId, selectedMicId, selectedCameraId',
-});
-
-export { db };
-export type { Workspace, WorkspaceSettings };
+// Export a singleton instance
+export const db = new StashCastDB();
