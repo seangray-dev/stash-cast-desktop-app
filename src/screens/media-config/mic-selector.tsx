@@ -29,28 +29,56 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMediaSources } from '@/hooks/use-media-sources';
-import { useMediaConfig } from '../../providers/media-config-provider';
+import useMediaConfigStore from '@/stores/media-config-store';
 
 export default function MicSelector() {
   const {
     selectedMicId,
-    setSelectedMicId,
+    handleMicChange,
     isMicrophoneEnabled,
     setIsMicrophoneEnabled,
-  } = useMediaConfig();
+    microphoneStream,
+    setMicrophoneStream,
+  } = useMediaConfigStore();
   const { data, isPending } = useMediaSources();
+
+  const handleMicToggle = async () => {
+    if (microphoneStream) {
+      // If we have a stream, stop it
+      microphoneStream.getTracks().forEach((track) => track.stop());
+      setMicrophoneStream(null);
+      setIsMicrophoneEnabled(false);
+      return;
+    }
+
+    // If we have a selected mic but no stream, start streaming
+    if (selectedMicId) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: selectedMicId },
+          },
+        });
+        setMicrophoneStream(stream);
+        setIsMicrophoneEnabled(true);
+      } catch (error) {
+        console.error('Error starting microphone stream:', error);
+        setIsMicrophoneEnabled(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'd' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setIsMicrophoneEnabled(!isMicrophoneEnabled);
+        handleMicToggle();
       }
     };
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, [setIsMicrophoneEnabled]);
+  }, [selectedMicId, microphoneStream]);
 
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
@@ -62,7 +90,7 @@ export default function MicSelector() {
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={isMicrophoneEnabled ? 'default' : 'destructive'}
-              onClick={() => setIsMicrophoneEnabled(!isMicrophoneEnabled)}>
+              onClick={handleMicToggle}>
               <span className='sr-only'>Toggle microphone on/off</span>
               {isPending ? (
                 <Loader2 className='size-4 animate-spin' />
@@ -110,7 +138,7 @@ export default function MicSelector() {
           <div className='p-2'>
             <DropdownMenuRadioGroup
               value={selectedMicId || ''}
-              onValueChange={setSelectedMicId}
+              onValueChange={handleMicChange}
               className='space-y-1.5'>
               {data?.audioinputs.map((device) => (
                 <DropdownMenuRadioItem

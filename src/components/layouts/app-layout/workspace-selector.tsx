@@ -8,15 +8,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarMenuButton } from '@/components/ui/sidebar';
-import { Workspace } from '@/db/db';
-import {
-  getAllWorkspaces,
-  getCurrentWorkspace,
-  getWorkspaceWithSettings,
-} from '@/db/operations';
+import { useCurrentDevice } from '@/hooks/use-workspace-query';
+import useMediaConfigStore from '@/stores/media-config-store';
+import { useWorkspaceStore, useWorkspaceSync } from '@/stores/workspaces-store';
+import { Workspace } from '@/types/workspace';
 import { ChevronDown, Plus } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { useMediaConfig } from '../../../providers/media-config-provider';
 
 export default function WorkspaceSelector() {
   const {
@@ -26,67 +22,43 @@ export default function WorkspaceSelector() {
     setIsCameraEnabled,
     setIsMicrophoneEnabled,
     setIsDisplayEnabled,
-  } = useMediaConfig();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(
-    null
+  } = useMediaConfigStore();
+
+  // Get workspaces from store and sync with DB
+  const { isLoading } = useWorkspaceSync();
+  const { data: currentDevice } = useCurrentDevice();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const currentWorkspace = useWorkspaceStore((state) =>
+    state.getCurrentWorkspace()
   );
-  const [isLoading, setIsLoading] = useState(true);
-
-  const applyWorkspaceSettings = useCallback(
-    (result: { workspace: Workspace; settings: any }) => {
-      setCurrentWorkspace(result.workspace);
-
-      // Apply device selections using handlers
-      handleScreenChange(result.settings.selectedScreenId);
-      handleMicChange(result.settings.selectedMicId);
-      handleCameraChange(result.settings.selectedCameraId);
-
-      // Set initial toggle states
-      setIsCameraEnabled(result.settings.isCameraEnabled);
-      setIsMicrophoneEnabled(result.settings.isMicrophoneEnabled);
-      setIsDisplayEnabled(result.settings.isDisplayEnabled);
-    },
-    [
-      handleCameraChange,
-      handleMicChange,
-      handleScreenChange,
-      setIsCameraEnabled,
-      setIsMicrophoneEnabled,
-      setIsDisplayEnabled,
-    ]
+  const setCurrentWorkspace = useWorkspaceStore(
+    (state) => state.setCurrentWorkspace
   );
 
-  useEffect(() => {
-    const initializeWorkspaces = async () => {
-      try {
-        setIsLoading(true);
-        // First, get the current workspace
-        const current = await getCurrentWorkspace();
-        if (current) {
-          const result = await getWorkspaceWithSettings(current.id);
-          if (result) {
-            applyWorkspaceSettings(result);
-          }
-        }
+  const applyWorkspaceSettings = (workspace: Workspace) => {
+    if (!currentDevice?.id) return;
 
-        // Then load all workspaces
-        const allWorkspaces = await getAllWorkspaces();
-        setWorkspaces(allWorkspaces);
-      } catch (error) {
-        console.error('Error initializing workspaces:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    const settings = workspace.deviceSettings[currentDevice.id];
+    if (!settings) return;
 
-    initializeWorkspaces();
-  }, []); // Empty dependency array since we only want this to run once
+    // Apply device selections using handlers
+    handleScreenChange(null); // We'll need to find the screen source from mediaSources
+    handleMicChange(settings.selectedMicId);
+    handleCameraChange(settings.selectedCameraId);
 
-  const handleWorkspaceSelect = async (workspaceId: number) => {
-    const result = await getWorkspaceWithSettings(workspaceId);
-    if (result) {
-      applyWorkspaceSettings(result);
+    // Set initial toggle states
+    setIsCameraEnabled(settings.defaultCameraEnabled);
+    setIsMicrophoneEnabled(settings.defaultMicEnabled);
+    setIsDisplayEnabled(settings.defaultDisplayEnabled);
+  };
+
+  const handleWorkspaceSelect = (workspaceId: number) => {
+    setCurrentWorkspace(workspaceId);
+    const workspace = useWorkspaceStore
+      .getState()
+      .getWorkspaceById(workspaceId);
+    if (workspace) {
+      applyWorkspaceSettings(workspace);
     }
   };
 
@@ -119,7 +91,7 @@ export default function WorkspaceSelector() {
         {workspaces.map((workspace, index) => (
           <DropdownMenuItem
             key={workspace.id}
-            onClick={() => handleWorkspaceSelect(workspace.id)}
+            onClick={() => handleWorkspaceSelect(workspace.id!)}
             className='gap-2 p-2'>
             {workspace.name}
             <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>

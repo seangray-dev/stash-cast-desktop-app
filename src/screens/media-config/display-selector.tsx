@@ -27,12 +27,19 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { isScreen, isWindow, useMediaSources } from '@/hooks/use-media-sources';
-import { useMediaConfig } from '../../providers/media-config-provider';
+import useMediaConfigStore from '@/stores/media-config-store';
 import DisplaysDialog from './displays-dialog';
 import WindowsDialog from './windows-dialog';
 
 export default function DisplaySelector() {
-  const { selectedScreen, screenStream, setScreenStream } = useMediaConfig();
+  const {
+    selectedScreen,
+    screenStream,
+    setScreenStream,
+    handleScreenChange,
+    isDisplayEnabled,
+    setIsDisplayEnabled,
+  } = useMediaConfigStore();
   const { data, isPending } = useMediaSources();
 
   const handleDisplayToggle = async () => {
@@ -40,6 +47,7 @@ export default function DisplaySelector() {
       // If we have a stream, stop it
       screenStream.getTracks().forEach((track) => track.stop());
       setScreenStream(null);
+      setIsDisplayEnabled(false);
       return;
     }
 
@@ -56,8 +64,10 @@ export default function DisplaySelector() {
           },
         });
         setScreenStream(stream);
+        setIsDisplayEnabled(true);
       } catch (error) {
         console.error('Error capturing screen:', error);
+        setIsDisplayEnabled(false);
       }
     }
   };
@@ -85,7 +95,7 @@ export default function DisplaySelector() {
             <Button
               size={'icon'}
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
-              variant={screenStream ? 'default' : 'destructive'}
+              variant={isDisplayEnabled ? 'default' : 'destructive'}
               onClick={handleDisplayToggle}
               disabled={!selectedScreen || isPending}>
               <span className='sr-only'>Toggle display on/off</span>
@@ -93,7 +103,7 @@ export default function DisplaySelector() {
                 <Loader2 className='size-4 animate-spin' />
               ) : (
                 <>
-                  {screenStream ? (
+                  {isDisplayEnabled ? (
                     <ScreenShareIcon size={24} />
                   ) : (
                     <ScreenShareOffIcon size={24} />
@@ -117,7 +127,7 @@ export default function DisplaySelector() {
         <DropdownMenuTrigger asChild>
           <Button
             disabled={isPending}
-            variant={screenStream ? 'default' : 'destructive'}
+            variant={isDisplayEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
             aria-label='Options'>

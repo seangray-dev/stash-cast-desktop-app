@@ -1,164 +1,120 @@
 import {
   createDefaultWorkspace,
   createNewWorkspace,
-  getAllWorkspaces,
+  getCurrentDevice,
   getCurrentWorkspace,
-  getWorkspaceSettings,
   updateWorkspaceSettings,
 } from '@/db/operations';
 import { DesktopSource } from '@/types/media';
+import { WorkspaceSettings } from '@/types/workspace';
 
-export interface MediaPreferences {
-  selectedScreenId: string | null;
-  selectedMicId: string | null;
-  selectedCameraId: string | null;
-  isMicrophoneEnabled: boolean;
-  isCameraEnabled: boolean;
-  isDisplayEnabled: boolean;
-}
-
-const DEFAULT_PREFERENCES: MediaPreferences = {
+const DEFAULT_SETTINGS: WorkspaceSettings = {
   selectedScreenId: null,
   selectedMicId: null,
   selectedCameraId: null,
-  isMicrophoneEnabled: false,
-  isCameraEnabled: false,
-  isDisplayEnabled: false,
+  defaultDisplayEnabled: true,
+  defaultMicEnabled: true,
+  defaultCameraEnabled: true,
+  defaultSaveLocation: null,
 };
 
 export async function saveMediaPreferences(
-  preferences: MediaPreferences,
+  settings: Partial<WorkspaceSettings>,
   workspaceName?: string
 ): Promise<void> {
+  const currentDevice = await getCurrentDevice();
+  if (!currentDevice) throw new Error('No device found');
+
   if (workspaceName) {
-    // Save to a new workspace
-    await createNewWorkspace(workspaceName, preferences);
+    // Create new workspace with these settings
+    await createNewWorkspace(workspaceName, currentDevice.id, settings);
   } else {
-    // Save to current workspace
+    // Update current workspace settings
     const currentWorkspace = await getCurrentWorkspace();
-    if (currentWorkspace) {
-      await updateWorkspaceSettings(currentWorkspace.id, preferences);
-    }
+    if (!currentWorkspace) throw new Error('No workspace found');
+
+    await updateWorkspaceSettings(
+      currentWorkspace.id!,
+      currentDevice.id,
+      settings
+    );
   }
-}
-
-export async function getMediaPreferences(): Promise<MediaPreferences> {
-  const currentWorkspace = await getCurrentWorkspace();
-  if (!currentWorkspace) {
-    return DEFAULT_PREFERENCES;
-  }
-
-  const settings = await getWorkspaceSettings(currentWorkspace.id);
-  return settings || DEFAULT_PREFERENCES;
-}
-
-export async function getWorkspaces() {
-  return await getAllWorkspaces();
 }
 
 export async function initializeMediaPreferences(
   screens: DesktopSource[],
   mics: MediaDeviceInfo[],
   cameras: MediaDeviceInfo[]
-): Promise<MediaPreferences> {
-  console.log('🚀 Initializing media preferences with:', {
-    availableScreens: screens.map((s) => ({ id: s.id, name: s.name })),
-    availableMics: mics.map((m) => ({ id: m.deviceId, label: m.label })),
-    availableCameras: cameras.map((c) => ({ id: c.deviceId, label: c.label })),
-  });
+): Promise<WorkspaceSettings> {
+  console.log('🚀 Initializing media preferences');
 
-  const currentWorkspace = await getCurrentWorkspace();
-  console.log('📂 Current workspace:', currentWorkspace);
+  const currentDevice = await getCurrentDevice();
+  if (!currentDevice) throw new Error('No device found');
 
-  if (!currentWorkspace) {
-    console.log('🆕 No workspace found, creating default workspace');
-    const defaultSettings: MediaPreferences = {
-      selectedScreenId: screens.length > 0 ? screens[0].id : null,
-      selectedMicId: mics.length > 0 ? mics[0].deviceId : null,
-      selectedCameraId: cameras.length > 0 ? cameras[0].deviceId : null,
-      isMicrophoneEnabled: true,
-      isCameraEnabled: true,
-      isDisplayEnabled: true,
+  const defaultSettings: WorkspaceSettings = {
+    selectedScreenId: screens.length > 0 ? screens[0].id : null,
+    selectedMicId: mics.length > 0 ? mics[0].deviceId : null,
+    selectedCameraId: cameras.length > 0 ? cameras[0].deviceId : null,
+    defaultDisplayEnabled: true,
+    defaultMicEnabled: true,
+    defaultCameraEnabled: true,
+    defaultSaveLocation: null,
+  };
+
+  try {
+    const currentWorkspace = await getCurrentWorkspace();
+
+    if (!currentWorkspace) {
+      console.log('Creating default workspace...');
+      await createDefaultWorkspace({
+        screens,
+        mics,
+        cameras,
+      });
+      return defaultSettings;
+    }
+
+    // Get current device settings or create default ones
+    const deviceSettings = currentWorkspace.deviceSettings[
+      currentDevice.id
+    ] || {
+      ...DEFAULT_SETTINGS,
     };
-    console.log('⚙️ Default settings:', defaultSettings);
 
-    const { settings } = await createDefaultWorkspace(screens, mics, cameras);
-    console.log('✅ Created default workspace with settings:', settings);
+    // Update settings if needed
+    const updatedSettings = { ...deviceSettings };
+    let needsUpdate = false;
 
-    // Return our defaultSettings instead of the database settings to ensure correct initial state
+    // Only update if devices are not selected but available
+    if (!updatedSettings.selectedScreenId && screens.length > 0) {
+      updatedSettings.selectedScreenId = screens[0].id;
+      updatedSettings.defaultDisplayEnabled = true;
+      needsUpdate = true;
+    }
+
+    if (!updatedSettings.selectedMicId && mics.length > 0) {
+      updatedSettings.selectedMicId = mics[0].deviceId;
+      updatedSettings.defaultMicEnabled = true;
+      needsUpdate = true;
+    }
+
+    if (!updatedSettings.selectedCameraId && cameras.length > 0) {
+      updatedSettings.selectedCameraId = cameras[0].deviceId;
+      updatedSettings.defaultCameraEnabled = true;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      await updateWorkspaceSettings(
+        currentWorkspace.id!,
+        currentDevice.id,
+        updatedSettings
+      );
+    }
+
+    return updatedSettings;
+  } catch (error) {
+    console.error('Error initializing media preferences:', error);
     return defaultSettings;
   }
-
-  const preferences = await getMediaPreferences();
-  console.log('📱 Existing preferences:', preferences);
-
-  // For existing workspaces, ensure devices are enabled if they're selected
-  const updatedPreferences = { ...preferences };
-  let needsUpdate = false;
-
-  if (
-    updatedPreferences.selectedScreenId &&
-    !updatedPreferences.isDisplayEnabled
-  ) {
-    console.log('🖥️ Screen selected but not enabled, enabling display');
-    updatedPreferences.isDisplayEnabled = true;
-    needsUpdate = true;
-  }
-
-  if (
-    updatedPreferences.selectedMicId &&
-    !updatedPreferences.isMicrophoneEnabled
-  ) {
-    console.log('🎤 Mic selected but not enabled, enabling microphone');
-    updatedPreferences.isMicrophoneEnabled = true;
-    needsUpdate = true;
-  }
-
-  if (
-    updatedPreferences.selectedCameraId &&
-    !updatedPreferences.isCameraEnabled
-  ) {
-    console.log('📸 Camera selected but not enabled, enabling camera');
-    updatedPreferences.isCameraEnabled = true;
-    needsUpdate = true;
-  }
-
-  // If no devices are selected, select and enable the first available ones
-  if (!updatedPreferences.selectedScreenId && screens.length > 0) {
-    console.log(
-      '🖥️ No screen selected, selecting first available screen:',
-      screens[0].id
-    );
-    updatedPreferences.selectedScreenId = screens[0].id;
-    updatedPreferences.isDisplayEnabled = true;
-    needsUpdate = true;
-  }
-
-  if (!updatedPreferences.selectedMicId && mics.length > 0) {
-    console.log(
-      '🎤 No mic selected, selecting first available mic:',
-      mics[0].deviceId
-    );
-    updatedPreferences.selectedMicId = mics[0].deviceId;
-    updatedPreferences.isMicrophoneEnabled = true;
-    needsUpdate = true;
-  }
-
-  if (!updatedPreferences.selectedCameraId && cameras.length > 0) {
-    console.log(
-      '📸 No camera selected, selecting first available camera:',
-      cameras[0].deviceId
-    );
-    updatedPreferences.selectedCameraId = cameras[0].deviceId;
-    updatedPreferences.isCameraEnabled = true;
-    needsUpdate = true;
-  }
-
-  if (needsUpdate) {
-    console.log('💾 Saving updated preferences:', updatedPreferences);
-    await saveMediaPreferences(updatedPreferences);
-  }
-
-  console.log('🏁 Returning preferences:', updatedPreferences);
-  return updatedPreferences;
 }

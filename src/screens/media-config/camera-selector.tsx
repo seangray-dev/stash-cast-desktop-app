@@ -28,8 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useMediaSources } from '@/hooks/use-media-sources';
-import { useMediaConfig } from '../../providers/media-config-provider';
+import useMediaConfigStore from '@/stores/media-config-store';
 
 export default function CameraSelector() {
   const {
@@ -37,11 +36,39 @@ export default function CameraSelector() {
     isCameraEnabled,
     setIsCameraEnabled,
     handleCameraChange,
-  } = useMediaConfig();
-  const { data, isPending } = useMediaSources();
+    cameraStream,
+    setCameraStream,
+    mediaSources,
+  } = useMediaConfigStore();
 
-  const handleCameraToggle = () => {
-    setIsCameraEnabled(!isCameraEnabled);
+  const handleCameraToggle = async () => {
+    if (cameraStream) {
+      // If we have a stream, stop it
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+      setIsCameraEnabled(false);
+      window.ipcRenderer.send('hide-camera-window');
+      return;
+    }
+
+    // If we have a selected camera but no stream, start streaming
+    if (selectedCameraId) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: selectedCameraId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        setCameraStream(stream);
+        setIsCameraEnabled(true);
+        window.ipcRenderer.send('show-camera-window');
+      } catch (error) {
+        console.error('Error starting camera stream:', error);
+        setIsCameraEnabled(false);
+      }
+    }
   };
 
   useEffect(() => {
@@ -54,7 +81,7 @@ export default function CameraSelector() {
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, [isCameraEnabled]);
+  }, [selectedCameraId, cameraStream]);
 
   return (
     <div className='divide-primary-foreground/30 inline-flex -space-x-px divide-x rounded-lg shadow-sm shadow-black/5 rtl:space-x-reverse'>
@@ -66,18 +93,12 @@ export default function CameraSelector() {
               className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10'
               variant={isCameraEnabled ? 'default' : 'destructive'}
               onClick={handleCameraToggle}
-              disabled={!selectedCameraId || isPending}>
+              disabled={!selectedCameraId}>
               <span className='sr-only'>Toggle camera on/off</span>
-              {isPending ? (
-                <Loader2 className='size-4 animate-spin' />
+              {isCameraEnabled ? (
+                <VideoIcon size={24} />
               ) : (
-                <>
-                  {isCameraEnabled ? (
-                    <VideoIcon size={24} />
-                  ) : (
-                    <VideoOffIcon size={24} />
-                  )}
-                </>
+                <VideoOffIcon size={24} />
               )}
             </Button>
           </TooltipTrigger>
@@ -96,7 +117,6 @@ export default function CameraSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            disabled={isPending}
             variant={isCameraEnabled ? 'default' : 'destructive'}
             className='rounded-none shadow-none first:rounded-s-lg last:rounded-e-lg focus-visible:z-10 group'
             size='icon'
@@ -116,7 +136,7 @@ export default function CameraSelector() {
             value={selectedCameraId || ''}
             onValueChange={handleCameraChange}
             className='space-y-1.5'>
-            {data?.videoinputs.map((device) => (
+            {mediaSources?.videoinputs.map((device) => (
               <DropdownMenuRadioItem
                 key={device.deviceId}
                 value={device.deviceId}

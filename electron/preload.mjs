@@ -2,7 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   invoke: (channel, ...args) => {
-    const validChannels = ['getSources', 'get-display-info'];
+    const validChannels = [
+      'getSources',
+      'get-display-info',
+      'get-machine-id',
+      'get-hostname',
+    ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }

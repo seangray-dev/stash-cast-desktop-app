@@ -10,9 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import useMediaConfigStore from '@/stores/media-config-store';
 import { ChevronDown, CircleDotIcon, CircleStopIcon, Cog } from 'lucide-react';
 import { useState } from 'react';
-import { useMediaConfig } from '../../providers/media-config-provider';
 import { RecordingService } from '../../services/recording';
 
 const recordingService = new RecordingService();
@@ -32,7 +32,7 @@ export default function RecordButton() {
     isDisplayEnabled,
     isCameraEnabled,
     isMicrophoneEnabled,
-  } = useMediaConfig();
+  } = useMediaConfigStore();
 
   const handleRecordToggle = async () => {
     try {

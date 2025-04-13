@@ -8,8 +8,9 @@ import {
   systemPreferences,
   Tray,
 } from 'electron';
+import { machineId } from 'node-machine-id';
 import fs from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FFmpegService } from '../src/services/ffmpeg';
@@ -328,6 +329,22 @@ function setupIPC() {
   // Add settings update handler
   ipcMain.handle('update-ffmpeg-settings', async (_event, settings) => {
     return false;
+  });
+
+  // Add hostname handler
+  ipcMain.handle('get-hostname', () => {
+    return hostname();
+  });
+
+  // Add machine ID handler
+  ipcMain.handle('get-machine-id', async () => {
+    try {
+      const id = await machineId();
+      return id;
+    } catch (error) {
+      console.error('Error getting machine ID:', error);
+      return null;
+    }
   });
 }
 

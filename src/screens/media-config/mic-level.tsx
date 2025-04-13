@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { MicIcon } from 'lucide-react';
 
-import { useMediaConfig } from '../../providers/media-config-provider';
+import useMediaConfigStore from '@/stores/media-config-store';
 
 const dbToPercentage = (db: number): number => {
   // Clamp at 0dB (no headroom in display)
@@ -28,7 +28,7 @@ const dbToPercentage = (db: number): number => {
 };
 
 export default function MicLevel() {
-  const { microphoneStream, isMicrophoneEnabled } = useMediaConfig();
+  const { microphoneStream, isMicrophoneEnabled } = useMediaConfigStore();
   const [volume, setVolume] = useState(0);
   const [currentDb, setCurrentDb] = useState(-60);
   const animationFrameRef = useRef<number>();

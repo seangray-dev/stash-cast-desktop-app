@@ -6,30 +6,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import useMediaConfigStore from '@/stores/media-config-store';
 import { DesktopSource } from '@/types/media';
 import { MonitorIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useMediaConfig } from '../../providers/media-config-provider';
 
 interface DisplaysDialogProps {
   screens: DesktopSource[];
 }
 
 export default function DisplaysDialog({ screens }: DisplaysDialogProps) {
-  const { selectedScreen, setSelectedScreen, setIsDisplayEnabled } =
-    useMediaConfig();
+  const { selectedScreen, handleScreenChange, setIsDisplayEnabled } =
+    useMediaConfigStore();
   const [open, setOpen] = useState(false);
 
   // Auto-select first screen if none selected
   useEffect(() => {
     if (screens.length > 0 && !selectedScreen) {
-      setSelectedScreen(screens[0]);
+      handleScreenChange(screens[0]);
       setIsDisplayEnabled(true);
     }
-  }, [screens, selectedScreen, setSelectedScreen, setIsDisplayEnabled]);
+  }, [screens, selectedScreen, handleScreenChange, setIsDisplayEnabled]);
 
   const handleSelect = (screen: DesktopSource) => {
-    setSelectedScreen(screen);
+    handleScreenChange(screen);
     setIsDisplayEnabled(true);
     setOpen(false);
   };
