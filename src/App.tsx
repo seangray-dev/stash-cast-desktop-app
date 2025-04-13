@@ -1,4 +1,4 @@
-import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { Route, HashRouter as Router, Routes } from 'react-router-dom';
 import AppLayout from './components/layouts/app-layout/app-layout';
 import { Toaster } from './components/ui/toaster';
 import './index.css';
