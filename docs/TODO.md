@@ -19,7 +19,6 @@
 - [ ] Refactor: Move IPC handler to separate files/folder
 - [ ] Save as workspace when settings are changed 
 
-- [ ] Remove Auth
+- [x] Remove Auth
 - [ ] EASY DEASULTS
 - [ ] Afer recording, open finder and select the file
-
