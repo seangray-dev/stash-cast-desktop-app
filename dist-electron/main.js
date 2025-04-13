@@ -1,11 +1,291 @@
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 import { app, BrowserWindow, systemPreferences, ipcMain, desktopCapturer, dialog, nativeImage, Tray } from "electron";
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir as tmpdir$1 } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "child_process";
+import { promises } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+async function detectHardwareAcceleration() {
+  return new Promise((resolve) => {
+    const ffmpeg = spawn("ffmpeg", ["-encoders"]);
+    let output = "";
+    ffmpeg.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+    ffmpeg.stderr.on("data", (data) => {
+      output += data.toString();
+    });
+    ffmpeg.on("close", () => {
+      if (process.platform === "darwin" && output.includes("h264_videotoolbox")) {
+        resolve({
+          type: "videotoolbox",
+          available: true,
+          name: "Apple VideoToolbox"
+        });
+      } else if (output.includes("h264_nvenc")) {
+        resolve({
+          type: "nvenc",
+          available: true,
+          name: "NVIDIA NVENC"
+        });
+      } else if (output.includes("h264_qsv")) {
+        resolve({
+          type: "qsv",
+          available: true,
+          name: "Intel Quick Sync"
+        });
+      } else if (output.includes("h264_amf")) {
+        resolve({
+          type: "amf",
+          available: true,
+          name: "AMD AMF"
+        });
+      } else {
+        resolve({
+          type: "none",
+          available: false,
+          name: "Software Encoding"
+        });
+      }
+    });
+    ffmpeg.on("error", () => {
+      resolve({
+        type: "none",
+        available: false,
+        name: "Software Encoding"
+      });
+    });
+  });
+}
+function getEncoderSettings(hwAccel) {
+  switch (hwAccel.type) {
+    case "videotoolbox":
+      return ["-c:v", "h264_videotoolbox"];
+    case "nvenc":
+      return ["-c:v", "h264_nvenc", "-preset", "p7", "-tune", "hq"];
+    case "qsv":
+      return ["-c:v", "h264_qsv", "-preset", "veryslow"];
+    case "amf":
+      return ["-c:v", "h264_amf", "-quality", "quality"];
+    default:
+      return ["-c:v", "libx264"];
+  }
+}
+const VIDEO_QUALITY_PRESETS = {
+  "2160p": {
+    width: 3840,
+    height: 2160,
+    videoBitrate: "45M",
+    audioBitrate: "384k",
+    crf: 18
+  },
+  "1440p": {
+    width: 2560,
+    height: 1440,
+    videoBitrate: "16M",
+    audioBitrate: "256k",
+    crf: 20
+  },
+  "1080p": {
+    width: 1920,
+    height: 1080,
+    videoBitrate: "8M",
+    audioBitrate: "192k",
+    crf: 22
+  },
+  "720p": {
+    width: 1280,
+    height: 720,
+    videoBitrate: "5M",
+    audioBitrate: "128k",
+    crf: 23
+  },
+  "480p": {
+    width: 854,
+    height: 480,
+    videoBitrate: "2.5M",
+    audioBitrate: "96k",
+    crf: 25
+  }
+};
+class FFmpegService {
+  constructor() {
+    __publicField(this, "hwAccel", null);
+    __publicField(this, "defaultSettings", {
+      useHardwareAcceleration: true,
+      preset: "medium",
+      crf: 23,
+      audioQuality: 3,
+      maxBitrate: "5M",
+      quality: "1080p",
+      // Default to 1080p
+      maintainAspectRatio: true
+    });
+    this.initializeHardwareAcceleration();
+  }
+  async initializeHardwareAcceleration() {
+    this.hwAccel = await detectHardwareAcceleration();
+    console.log("Hardware acceleration:", this.hwAccel);
+  }
+  getFFmpegArgs(inputPath, outputPath, settings) {
+    var _a;
+    const args = [
+      "-y",
+      // Overwrite output file
+      "-i",
+      inputPath
+      // Input file
+    ];
+    if (settings.useHardwareAcceleration && ((_a = this.hwAccel) == null ? void 0 : _a.available)) {
+      args.push(...getEncoderSettings(this.hwAccel));
+    } else {
+      args.push("-c:v", "libx264");
+    }
+    if (settings.quality && VIDEO_QUALITY_PRESETS[settings.quality]) {
+      const preset = VIDEO_QUALITY_PRESETS[settings.quality];
+      args.push(
+        "-vf",
+        `scale=${preset.width}:${preset.height}${settings.maintainAspectRatio ? ":force_original_aspect_ratio=decrease" : ""}`,
+        "-b:v",
+        preset.videoBitrate,
+        "-b:a",
+        preset.audioBitrate,
+        "-crf",
+        preset.crf.toString()
+      );
+    } else if (settings.width && settings.height) {
+      args.push(
+        "-vf",
+        `scale=${settings.width}:${settings.height}${settings.maintainAspectRatio ? ":force_original_aspect_ratio=decrease" : ""}`
+      );
+    }
+    args.push(
+      "-preset",
+      settings.preset,
+      // Audio settings
+      "-c:a",
+      "aac",
+      "-q:a",
+      settings.audioQuality.toString(),
+      "-ar",
+      "48000",
+      // Audio sample rate
+      "-ac",
+      "2",
+      // Stereo audio
+      // Additional optimizations
+      "-movflags",
+      "+faststart",
+      "-pix_fmt",
+      "yuv420p"
+    );
+    if (settings.maxBitrate && !settings.quality) {
+      args.push(
+        "-maxrate",
+        settings.maxBitrate,
+        "-bufsize",
+        settings.maxBitrate
+      );
+    }
+    if (!settings.quality) {
+      if (settings.videoBitrate) {
+        args.push("-b:v", settings.videoBitrate);
+      }
+      if (settings.audioBitrate) {
+        args.push("-b:a", settings.audioBitrate);
+      }
+    }
+    args.push(outputPath);
+    return args;
+  }
+  async convertVideo(inputBuffer, outputPath, settings = {}, onProgress) {
+    try {
+      const tempInput = join(tmpdir(), `temp-${Date.now()}.webm`);
+      await promises.writeFile(tempInput, Buffer.from(inputBuffer));
+      const finalSettings = {
+        ...this.defaultSettings,
+        ...settings
+      };
+      return new Promise((resolve, reject) => {
+        const args = this.getFFmpegArgs(tempInput, outputPath, finalSettings);
+        console.log("FFmpeg arguments:", args);
+        const ffmpeg = spawn("ffmpeg", args);
+        let duration = 0;
+        let errorLog = "";
+        ffmpeg.stderr.on("data", (data) => {
+          const message = data.toString();
+          if (!duration) {
+            const match = message.match(/Duration: (\d{2}):(\d{2}):(\d{2})/);
+            if (match) {
+              duration = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]);
+            }
+          }
+          const timeMatch = message.match(/time=(\d{2}):(\d{2}):(\d{2})/);
+          if (timeMatch && duration && onProgress) {
+            const time = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]);
+            const progress = {
+              percent: time / duration * 100,
+              frame: 0,
+              // TODO: Parse frame info
+              fps: 0,
+              // TODO: Parse FPS
+              time: `${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}`,
+              bitrate: "0",
+              // TODO: Parse bitrate
+              size: "0"
+              // TODO: Parse size
+            };
+            onProgress(progress);
+          }
+          errorLog += message;
+        });
+        ffmpeg.on("close", async (code) => {
+          try {
+            await promises.unlink(tempInput);
+            if (code === 0) {
+              const fileInfo = await promises.stat(outputPath);
+              resolve({
+                success: true,
+                outputPath,
+                duration,
+                size: fileInfo.size
+              });
+            } else {
+              reject(new Error(`FFmpeg conversion failed: ${errorLog}`));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+        ffmpeg.on("error", (error) => {
+          promises.unlink(tempInput).catch(console.error);
+          reject(error);
+        });
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to convert video: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
+  }
+  getHardwareAcceleration() {
+    return this.hwAccel;
+  }
+  async updateSettings(settings) {
+    this.defaultSettings = {
+      ...this.defaultSettings,
+      ...settings
+    };
+  }
+}
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const applicationName = "Stash Cast";
+const ffmpegService = new FFmpegService();
 process.env.APP_ROOT = path.join(__dirname, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
@@ -71,30 +351,11 @@ function createCameraWindow() {
   });
   cameraWindow.setIgnoreMouseEvents(false);
   if (VITE_DEV_SERVER_URL) {
-    console.log(
-      "Loading camera window URL:",
-      `${VITE_DEV_SERVER_URL}src/camera.html`
-    );
     cameraWindow.loadURL(`${VITE_DEV_SERVER_URL}src/camera.html`);
   } else {
     const filePath = path.join(RENDERER_DIST, "camera.html");
-    console.log("Loading camera window file:", filePath);
     cameraWindow.loadFile(filePath);
   }
-  cameraWindow.webContents.on(
-    "did-fail-load",
-    (event, errorCode, errorDescription) => {
-      console.error(
-        "Camera window failed to load:",
-        errorCode,
-        errorDescription
-      );
-    }
-  );
-  cameraWindow.webContents.on("did-finish-load", () => {
-    console.log("Camera window loaded successfully");
-  });
-  cameraWindow.webContents.openDevTools({ mode: "detach" });
 }
 function setupTray() {
   const icon = nativeImage.createFromDataURL(
@@ -106,125 +367,6 @@ function setupTray() {
     if (!(mainAppWindow == null ? void 0 : mainAppWindow.isVisible())) {
       mainAppWindow == null ? void 0 : mainAppWindow.show();
     }
-  });
-}
-async function convertToMov(inputPath, outputPath) {
-  return new Promise((resolve, reject) => {
-    console.log("Starting FFmpeg conversion...");
-    console.log("Input path:", inputPath);
-    console.log("Output path:", outputPath);
-    const ffprobe = spawn("ffprobe", [
-      "-v",
-      "error",
-      "-select_streams",
-      "v:0",
-      "-show_entries",
-      "stream=width,height,r_frame_rate,codec_name",
-      "-of",
-      "json",
-      inputPath
-    ]);
-    let probeData = "";
-    ffprobe.stdout.on("data", (data) => {
-      probeData += data.toString();
-    });
-    ffprobe.on("close", async (code) => {
-      var _a, _b, _c, _d, _e, _f;
-      if (code !== 0) {
-        console.error("FFprobe analysis failed");
-        await tryConversion(inputPath, outputPath, {}).catch(reject);
-        return;
-      }
-      try {
-        const info = JSON.parse(probeData);
-        console.log("Input video info:", info);
-        const conversionOptions = {
-          videoBitrate: "5M",
-          audioBitrate: "256k",
-          frameRate: ((_b = (_a = info == null ? void 0 : info.streams) == null ? void 0 : _a[0]) == null ? void 0 : _b.r_frame_rate) || "30",
-          width: (_d = (_c = info == null ? void 0 : info.streams) == null ? void 0 : _c[0]) == null ? void 0 : _d.width,
-          height: (_f = (_e = info == null ? void 0 : info.streams) == null ? void 0 : _e[0]) == null ? void 0 : _f.height
-        };
-        await tryConversion(inputPath, outputPath, conversionOptions);
-        resolve();
-      } catch (error) {
-        console.error("Error parsing probe data:", error);
-        reject(error);
-      }
-    });
-  });
-}
-async function tryConversion(inputPath, outputPath, options) {
-  return new Promise((resolve, reject) => {
-    const ffmpegArgs = [
-      "-y",
-      // Overwrite output file
-      "-i",
-      inputPath,
-      // Input file
-      // Video settings
-      "-c:v",
-      "h264",
-      // H.264 codec
-      "-preset",
-      "slow",
-      // Slower encoding = better compression
-      "-crf",
-      "18",
-      // Constant Rate Factor (18-23 is visually lossless)
-      "-profile:v",
-      "high",
-      // High profile for better quality
-      "-level",
-      "4.2",
-      // Compatibility level
-      "-movflags",
-      "+faststart",
-      // Enable streaming
-      // Color settings
-      "-pix_fmt",
-      "yuv420p",
-      // Standard color space for better compatibility
-      // Audio settings
-      "-c:a",
-      "aac",
-      // AAC audio codec
-      "-b:a",
-      "320k",
-      // High quality audio bitrate
-      "-ar",
-      "48000",
-      // Audio sample rate
-      "-ac",
-      "2"
-      // Stereo audio
-    ];
-    if (options.frameRate) {
-      ffmpegArgs.push("-r", options.frameRate);
-    }
-    ffmpegArgs.push(outputPath);
-    console.log("FFmpeg arguments:", ffmpegArgs);
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs);
-    let errorLog = "";
-    ffmpeg.stderr.on("data", (data) => {
-      const message = data.toString();
-      errorLog += message;
-      console.log("FFmpeg:", message);
-    });
-    ffmpeg.on("close", (code) => {
-      if (code === 0) {
-        console.log("FFmpeg conversion successful");
-        resolve();
-      } else {
-        console.error("FFmpeg conversion failed with code:", code);
-        console.error("Error log:", errorLog);
-        reject(new Error(`FFmpeg conversion failed: ${errorLog}`));
-      }
-    });
-    ffmpeg.on("error", (err) => {
-      console.error("FFmpeg process error:", err);
-      reject(err);
-    });
   });
 }
 function setupIPC() {
@@ -258,42 +400,63 @@ function setupIPC() {
     const sources = [...screenThumbnails, ...windowThumbnails];
     return sources;
   });
-  ipcMain.handle("save-recording", async (_event, { buffer, mimeType }) => {
-    try {
-      const tempWebM = path.join(tmpdir(), `temp-${Date.now()}.webm`);
-      console.log("Creating temporary WebM file:", tempWebM);
-      await fs.writeFile(tempWebM, Buffer.from(buffer));
-      const stats = await fs.stat(tempWebM);
-      console.log("Temporary WebM file created:", {
-        size: stats.size,
-        mimeType
-      });
-      const { filePath, canceled } = await dialog.showSaveDialog({
-        defaultPath: path.join(
-          app.getPath("desktop"),
-          `recording-${Date.now()}.mov`
-        ),
-        filters: [{ name: "QuickTime Movie", extensions: ["mov"] }]
-      });
-      if (canceled || !filePath) {
-        console.log("Save dialog was canceled");
-        await fs.unlink(tempWebM).catch(console.error);
-        return { success: false, error: "Save dialog was canceled" };
+  ipcMain.handle(
+    "save-recording",
+    async (_event, { buffer, mimeType, options }) => {
+      try {
+        const tempWebM = path.join(tmpdir$1(), `temp-${Date.now()}.webm`);
+        console.log("Creating temporary WebM file:", tempWebM);
+        await fs.writeFile(tempWebM, Buffer.from(buffer));
+        const stats = await fs.stat(tempWebM);
+        console.log("Temporary WebM file created:", {
+          size: stats.size,
+          mimeType
+        });
+        const { filePath, canceled } = await dialog.showSaveDialog({
+          defaultPath: path.join(
+            app.getPath("desktop"),
+            `recording-${Date.now()}.mov`
+          ),
+          filters: [{ name: "QuickTime Movie", extensions: ["mov"] }]
+        });
+        if (canceled || !filePath) {
+          console.log("Save dialog was canceled");
+          await fs.unlink(tempWebM).catch(console.error);
+          return { success: false, error: "Save dialog was canceled" };
+        }
+        try {
+          const result = await ffmpegService.convertVideo(
+            buffer,
+            filePath,
+            {
+              useHardwareAcceleration: (options == null ? void 0 : options.useHardwareAcceleration) ?? true,
+              preset: "medium",
+              crf: 23,
+              audioQuality: 3,
+              maxBitrate: "5M"
+            },
+            (progress) => {
+              mainAppWindow == null ? void 0 : mainAppWindow.webContents.send("conversion-progress", progress);
+            }
+          );
+          await fs.unlink(tempWebM).catch(console.error);
+          return { success: true, filePath: result.outputPath };
+        } catch (error) {
+          await fs.unlink(tempWebM).catch(console.error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "Conversion failed"
+          };
+        }
+      } catch (error) {
+        console.error("Failed to save recording:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error occurred"
+        };
       }
-      console.log("Starting conversion to:", filePath);
-      await convertToMov(tempWebM, filePath);
-      console.log("Conversion completed successfully");
-      await fs.unlink(tempWebM).catch(console.error);
-      console.log("Temporary file cleaned up");
-      return { success: true, filePath };
-    } catch (error) {
-      console.error("Failed to save recording:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred"
-      };
     }
-  });
+  );
   ipcMain.on("start-recording", () => {
     console.log("Recording started");
   });
@@ -328,7 +491,6 @@ function setupIPC() {
     }
   });
   ipcMain.on("hide-camera-window", () => {
-    console.log("Received hide-camera-window event");
     if (cameraWindow && !cameraWindow.isDestroyed()) {
       cameraWindow.hide();
     }
@@ -347,6 +509,16 @@ function setupIPC() {
       displayId
     });
     return display;
+  });
+  ipcMain.handle("get-hardware-acceleration", async () => {
+    return {
+      type: "none",
+      available: false,
+      name: "Software Encoding"
+    };
+  });
+  ipcMain.handle("update-ffmpeg-settings", async (_event, settings) => {
+    return false;
   });
 }
 app.whenReady().then(async () => {

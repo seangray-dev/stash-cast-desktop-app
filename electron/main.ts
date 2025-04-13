@@ -8,14 +8,17 @@ import {
   systemPreferences,
   Tray,
 } from 'electron';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FFmpegService } from '../src/services/ffmpeg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const applicationName = 'Stash Cast';
+
+// Initialize FFmpeg service
+const ffmpegService = new FFmpegService();
 
 // The built directory structure
 //
@@ -40,7 +43,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 // Window references
 let tray: Tray | null = null;
 let mainAppWindow: BrowserWindow | null = null;
-let controlsWindow: BrowserWindow | null = null;
 let cameraWindow: BrowserWindow | null = null;
 
 async function checkAndRequestPermissions() {
@@ -82,28 +84,6 @@ function createMainAppWindow() {
   }
 }
 
-// function createControlsWindow() {
-//   controlsWindow = new BrowserWindow({
-//     width: 200,
-//     height: 60,
-//     frame: false,
-//     resizable: false,
-//     movable: false,
-//     show: false,
-//     alwaysOnTop: true,
-//     transparent: true,
-//     webPreferences: {
-//       preload: path.join(__dirname, 'preload.mjs'),
-//     },
-//   });
-
-//   if (VITE_DEV_SERVER_URL) {
-//     controlsWindow.loadURL(`${VITE_DEV_SERVER_URL}/controls`);
-//   } else {
-//     controlsWindow.loadFile(path.join(RENDERER_DIST, 'controls.html'));
-//   }
-// }
-
 function createCameraWindow() {
   console.log('Creating camera window...');
   cameraWindow = new BrowserWindow({
@@ -131,35 +111,11 @@ function createCameraWindow() {
   cameraWindow.setIgnoreMouseEvents(false);
 
   if (VITE_DEV_SERVER_URL) {
-    console.log(
-      'Loading camera window URL:',
-      `${VITE_DEV_SERVER_URL}src/camera.html`
-    );
     cameraWindow.loadURL(`${VITE_DEV_SERVER_URL}src/camera.html`);
   } else {
     const filePath = path.join(RENDERER_DIST, 'camera.html');
-    console.log('Loading camera window file:', filePath);
     cameraWindow.loadFile(filePath);
   }
-
-  // Add window load event logging
-  cameraWindow.webContents.on(
-    'did-fail-load',
-    (event, errorCode, errorDescription) => {
-      console.error(
-        'Camera window failed to load:',
-        errorCode,
-        errorDescription
-      );
-    }
-  );
-
-  cameraWindow.webContents.on('did-finish-load', () => {
-    console.log('Camera window loaded successfully');
-  });
-
-  // Open DevTools for debugging
-  cameraWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
 function setupTray() {
@@ -173,140 +129,6 @@ function setupTray() {
     if (!mainAppWindow?.isVisible()) {
       mainAppWindow?.show();
     }
-  });
-}
-
-async function convertToMov(
-  inputPath: string,
-  outputPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    console.log('Starting FFmpeg conversion...');
-    console.log('Input path:', inputPath);
-    console.log('Output path:', outputPath);
-
-    // First pass: Analyze the input file
-    const ffprobe = spawn('ffprobe', [
-      '-v',
-      'error',
-      '-select_streams',
-      'v:0',
-      '-show_entries',
-      'stream=width,height,r_frame_rate,codec_name',
-      '-of',
-      'json',
-      inputPath,
-    ]);
-
-    let probeData = '';
-    ffprobe.stdout.on('data', (data) => {
-      probeData += data.toString();
-    });
-
-    ffprobe.on('close', async (code) => {
-      if (code !== 0) {
-        console.error('FFprobe analysis failed');
-
-        // Try direct conversion as fallback
-        await tryConversion(inputPath, outputPath, {}).catch(reject);
-        return;
-      }
-
-      try {
-        const info = JSON.parse(probeData);
-        console.log('Input video info:', info);
-
-        const conversionOptions = {
-          videoBitrate: '5M',
-          audioBitrate: '256k',
-          frameRate: info?.streams?.[0]?.r_frame_rate || '30',
-          width: info?.streams?.[0]?.width,
-          height: info?.streams?.[0]?.height,
-        };
-
-        await tryConversion(inputPath, outputPath, conversionOptions);
-        resolve();
-      } catch (error) {
-        console.error('Error parsing probe data:', error);
-        reject(error);
-      }
-    });
-  });
-}
-
-async function tryConversion(
-  inputPath: string,
-  outputPath: string,
-  options: any
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // High quality H.264 settings for optimal quality/size ratio
-    const ffmpegArgs = [
-      '-y', // Overwrite output file
-      '-i',
-      inputPath, // Input file
-      // Video settings
-      '-c:v',
-      'h264', // H.264 codec
-      '-preset',
-      'slow', // Slower encoding = better compression
-      '-crf',
-      '18', // Constant Rate Factor (18-23 is visually lossless)
-      '-profile:v',
-      'high', // High profile for better quality
-      '-level',
-      '4.2', // Compatibility level
-      '-movflags',
-      '+faststart', // Enable streaming
-      // Color settings
-      '-pix_fmt',
-      'yuv420p', // Standard color space for better compatibility
-      // Audio settings
-      '-c:a',
-      'aac', // AAC audio codec
-      '-b:a',
-      '320k', // High quality audio bitrate
-      '-ar',
-      '48000', // Audio sample rate
-      '-ac',
-      '2', // Stereo audio
-    ];
-
-    // Add framerate if specified
-    if (options.frameRate) {
-      ffmpegArgs.push('-r', options.frameRate);
-    }
-
-    // Add output file
-    ffmpegArgs.push(outputPath);
-
-    console.log('FFmpeg arguments:', ffmpegArgs);
-
-    const ffmpeg = spawn('ffmpeg', ffmpegArgs);
-
-    let errorLog = '';
-
-    ffmpeg.stderr.on('data', (data) => {
-      const message = data.toString();
-      errorLog += message;
-      console.log('FFmpeg:', message);
-    });
-
-    ffmpeg.on('close', (code) => {
-      if (code === 0) {
-        console.log('FFmpeg conversion successful');
-        resolve();
-      } else {
-        console.error('FFmpeg conversion failed with code:', code);
-        console.error('Error log:', errorLog);
-        reject(new Error(`FFmpeg conversion failed: ${errorLog}`));
-      }
-    });
-
-    ffmpeg.on('error', (err) => {
-      console.error('FFmpeg process error:', err);
-      reject(err);
-    });
   });
 }
 
@@ -348,52 +170,74 @@ function setupIPC() {
   });
 
   // Updated save-recording handler
-  ipcMain.handle('save-recording', async (_event, { buffer, mimeType }) => {
-    try {
-      // Create temporary WebM file
-      const tempWebM = path.join(tmpdir(), `temp-${Date.now()}.webm`);
-      console.log('Creating temporary WebM file:', tempWebM);
+  ipcMain.handle(
+    'save-recording',
+    async (_event, { buffer, mimeType, options }) => {
+      try {
+        // Create temporary WebM file
+        const tempWebM = path.join(tmpdir(), `temp-${Date.now()}.webm`);
+        console.log('Creating temporary WebM file:', tempWebM);
 
-      await fs.writeFile(tempWebM, Buffer.from(buffer));
-      const stats = await fs.stat(tempWebM);
-      console.log('Temporary WebM file created:', {
-        size: stats.size,
-        mimeType,
-      });
+        await fs.writeFile(tempWebM, Buffer.from(buffer));
+        const stats = await fs.stat(tempWebM);
+        console.log('Temporary WebM file created:', {
+          size: stats.size,
+          mimeType,
+        });
 
-      // Show save dialog for final MOV file
-      const { filePath, canceled } = await dialog.showSaveDialog({
-        defaultPath: path.join(
-          app.getPath('desktop'),
-          `recording-${Date.now()}.mov`
-        ),
-        filters: [{ name: 'QuickTime Movie', extensions: ['mov'] }],
-      });
+        // Show save dialog for final MOV file
+        const { filePath, canceled } = await dialog.showSaveDialog({
+          defaultPath: path.join(
+            app.getPath('desktop'),
+            `recording-${Date.now()}.mov`
+          ),
+          filters: [{ name: 'QuickTime Movie', extensions: ['mov'] }],
+        });
 
-      if (canceled || !filePath) {
-        console.log('Save dialog was canceled');
-        await fs.unlink(tempWebM).catch(console.error);
-        return { success: false, error: 'Save dialog was canceled' };
+        if (canceled || !filePath) {
+          console.log('Save dialog was canceled');
+          await fs.unlink(tempWebM).catch(console.error);
+          return { success: false, error: 'Save dialog was canceled' };
+        }
+
+        try {
+          // Convert the video using FFmpeg
+          const result = await ffmpegService.convertVideo(
+            buffer,
+            filePath,
+            {
+              useHardwareAcceleration: options?.useHardwareAcceleration ?? true,
+              preset: 'medium',
+              crf: 23,
+              audioQuality: 3,
+              maxBitrate: '5M',
+            },
+            (progress) => {
+              // Forward progress to renderer
+              mainAppWindow?.webContents.send('conversion-progress', progress);
+            }
+          );
+
+          // Clean up temp file
+          await fs.unlink(tempWebM).catch(console.error);
+          return { success: true, filePath: result.outputPath };
+        } catch (error) {
+          await fs.unlink(tempWebM).catch(console.error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Conversion failed',
+          };
+        }
+      } catch (error) {
+        console.error('Failed to save recording:', error);
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Unknown error occurred',
+        };
       }
-
-      console.log('Starting conversion to:', filePath);
-      await convertToMov(tempWebM, filePath);
-      console.log('Conversion completed successfully');
-
-      // Clean up temp file
-      await fs.unlink(tempWebM).catch(console.error);
-      console.log('Temporary file cleaned up');
-
-      return { success: true, filePath };
-    } catch (error) {
-      console.error('Failed to save recording:', error);
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error.message : 'Unknown error occurred',
-      };
     }
-  });
+  );
 
   ipcMain.on('start-recording', () => {
     console.log('Recording started');
@@ -434,7 +278,6 @@ function setupIPC() {
   });
 
   ipcMain.on('hide-camera-window', () => {
-    console.log('Received hide-camera-window event');
     if (cameraWindow && !cameraWindow.isDestroyed()) {
       cameraWindow.hide();
     }
@@ -455,6 +298,20 @@ function setupIPC() {
       displayId: displayId,
     });
     return display;
+  });
+
+  // Add hardware acceleration detection handler
+  ipcMain.handle('get-hardware-acceleration', async () => {
+    return {
+      type: 'none',
+      available: false,
+      name: 'Software Encoding',
+    };
+  });
+
+  // Add settings update handler
+  ipcMain.handle('update-ffmpeg-settings', async (_event, settings) => {
+    return false;
   });
 }
 

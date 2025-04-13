@@ -13,15 +13,18 @@ import {
 import { ChevronDown, CircleDotIcon, CircleStopIcon, Cog } from 'lucide-react';
 import { useState } from 'react';
 import { useMediaConfig } from '../../providers/media-config-provider';
-import { RecordingService } from '../../services/recording-service';
+import { RecordingService } from '../../services/recording';
 
 const recordingService = new RecordingService();
+
+type VideoQuality = '2160p' | '1440p' | '1080p' | '720p' | '480p';
 
 export default function RecordButton() {
   const [isRecording, setIsRecording] = useState(false);
   const [saveLocation, setSaveLocation] = useState('desktop');
   const [timer, setTimer] = useState('none');
   const [showMouseClicks, setShowMouseClicks] = useState(false);
+  const [quality, setQuality] = useState<VideoQuality>('1080p');
   const {
     screenStream,
     cameraStream,
@@ -41,23 +44,33 @@ export default function RecordButton() {
           return;
         }
 
-        const success = await recordingService.startRecording(
+        const success = await recordingService.startRecording({
           videoStream,
-          isMicrophoneEnabled ? microphoneStream : null
-        );
+          audioStream: isMicrophoneEnabled ? microphoneStream : null,
+          videoBitsPerSecond: 5000000, // 5 Mbps
+          audioBitsPerSecond: 128000, // 128 kbps
+        });
 
         if (success) {
           setIsRecording(true);
         }
       } else {
         // Stop recording immediately
-        recordingService.stopRecording();
+        await recordingService.stopRecording();
         setIsRecording(false);
 
         // Then handle saving
-        const filePath = await recordingService.saveRecording();
-        if (filePath) {
-          console.log('Recording saved to:', filePath);
+        const result = await recordingService.saveRecording({
+          useHardwareAcceleration: true,
+          quality,
+          maintainAspectRatio: true,
+          preset: 'medium',
+        });
+
+        if (result.success) {
+          console.log('Recording saved to:', result.filePath);
+        } else {
+          console.error('Failed to save recording:', result.error);
         }
       }
     } catch (error) {
@@ -136,6 +149,28 @@ export default function RecordButton() {
             onCheckedChange={setShowMouseClicks}>
             Show Mouse Clicks
           </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Quality</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup
+            value={quality}
+            onValueChange={(v) => setQuality(v as VideoQuality)}>
+            <DropdownMenuRadioItem value='2160p'>
+              4K (2160p)
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value='1440p'>
+              2K (1440p)
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value='1080p'>
+              Full HD (1080p)
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value='720p'>
+              HD (720p)
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value='480p'>
+              SD (480p)
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Button

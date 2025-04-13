@@ -1,7 +1,18 @@
+import type {
+  RecordingOptions,
+  RecordingState,
+  RecordingStats,
+  SaveOptions,
+  SaveResult,
+} from './types';
+
 export class RecordingService {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
   private isRecording = false;
+  private startTime: number = 0;
+  private currentDuration: number = 0;
+  private durationInterval: number | null = null;
 
   private getSupportedMimeType(): string {
     const types = [
@@ -20,12 +31,9 @@ export class RecordingService {
     throw new Error('No supported mime type found for MediaRecorder');
   }
 
-  async startRecording(
-    videoStream: MediaStream,
-    audioStream: MediaStream | null = null
-  ) {
+  async startRecording(options: RecordingOptions): Promise<boolean> {
     try {
-      if (!videoStream) {
+      if (!options.videoStream) {
         throw new Error('No video stream available for recording');
       }
 
@@ -37,12 +45,13 @@ export class RecordingService {
       const combinedStream = new MediaStream();
 
       // Add all video tracks
-      videoStream.getVideoTracks().forEach((track) => {
+      options.videoStream.getVideoTracks().forEach((track) => {
         console.log('Adding video track:', track.label, track.getSettings());
         combinedStream.addTrack(track);
       });
 
       // Add all audio tracks if available
+      const audioStream = options.audioStream;
       if (audioStream && audioStream.getAudioTracks().length > 0) {
         audioStream.getAudioTracks().forEach((track) => {
           console.log('Adding audio track:', track.label, track.getSettings());
@@ -51,19 +60,18 @@ export class RecordingService {
       }
 
       const mimeType = this.getSupportedMimeType();
-      console.log('Creating MediaRecorder:', {
-        tracks: {
-          video: combinedStream.getVideoTracks().length,
-          audio: combinedStream.getAudioTracks().length,
-        },
-        mimeType,
-      });
+      const tracks = {
+        video: combinedStream.getVideoTracks().length,
+        audio: combinedStream.getAudioTracks().length,
+      };
+
+      console.log('Creating MediaRecorder:', { tracks, mimeType });
 
       // Create MediaRecorder with optimal settings
       this.mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType,
-        videoBitsPerSecond: 5000000, // 5 Mbps for better compatibility
-        audioBitsPerSecond: 128000, // 128 kbps is standard for audio
+        videoBitsPerSecond: options.videoBitsPerSecond || 5000000, // 5 Mbps for better compatibility
+        audioBitsPerSecond: options.audioBitsPerSecond || 128000, // 128 kbps is standard for audio
       });
 
       // Handle data available event
@@ -77,6 +85,14 @@ export class RecordingService {
       // Start recording with smaller chunk size for better handling
       this.mediaRecorder.start(1000);
       this.isRecording = true;
+      this.startTime = Date.now();
+      this.currentDuration = 0;
+
+      // Update duration every second
+      this.durationInterval = window.setInterval(() => {
+        this.currentDuration = Math.floor((Date.now() - this.startTime) / 1000);
+      }, 1000);
+
       console.log('Recording started');
       return true;
     } catch (error) {
@@ -89,18 +105,36 @@ export class RecordingService {
   private cleanup() {
     this.recordedChunks = [];
     this.isRecording = false;
+    if (this.durationInterval) {
+      clearInterval(this.durationInterval);
+      this.durationInterval = null;
+    }
+  }
+
+  private resetState() {
+    this.isRecording = false;
+    if (this.durationInterval) {
+      clearInterval(this.durationInterval);
+      this.durationInterval = null;
+    }
   }
 
   stopRecording(): Promise<void> {
     return new Promise((resolve) => {
       if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-        this.cleanup();
+        this.resetState();
         resolve();
         return;
       }
 
       this.mediaRecorder.onstop = () => {
-        this.cleanup();
+        // Calculate final duration
+        if (this.startTime > 0) {
+          this.currentDuration = Math.floor(
+            (Date.now() - this.startTime) / 1000
+          );
+        }
+        this.resetState();
         resolve();
       };
 
@@ -112,7 +146,7 @@ export class RecordingService {
     });
   }
 
-  async saveRecording(): Promise<string | null> {
+  async saveRecording(options: SaveOptions = {}): Promise<SaveResult> {
     try {
       if (this.recordedChunks.length === 0) {
         throw new Error('No recording data available');
@@ -122,11 +156,17 @@ export class RecordingService {
       const mimeType = this.getSupportedMimeType();
       const blob = new Blob(this.recordedChunks, { type: mimeType });
 
-      console.log('Created recording blob:', {
+      const stats: RecordingStats = {
         size: blob.size,
         type: blob.type,
         chunks: this.recordedChunks.length,
-      });
+        tracks: {
+          video: this.mediaRecorder?.stream.getVideoTracks().length ?? 0,
+          audio: this.mediaRecorder?.stream.getAudioTracks().length ?? 0,
+        },
+      };
+
+      console.log('Created recording blob:', stats);
 
       // Convert blob to array buffer
       const arrayBuffer = await blob.arrayBuffer();
@@ -135,18 +175,37 @@ export class RecordingService {
       // Send to main process for ffmpeg processing and saving
       const result = await window.ipcRenderer.invoke('save-recording', {
         buffer: Array.from(uint8Array),
-        mimeType, // Pass mime type to main process
+        mimeType,
+        options,
       });
 
       if (!result.success) {
-        throw new Error(result.error);
+        return {
+          success: false,
+          error: result.error,
+        };
       }
 
       this.recordedChunks = [];
-      return result.filePath;
+      return {
+        success: true,
+        filePath: result.filePath,
+      };
     } catch (error) {
       console.error('Error saving recording:', error);
-      return null;
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
     }
+  }
+
+  getState(): RecordingState {
+    return {
+      isRecording: this.isRecording,
+      duration: this.currentDuration,
+      chunks: this.recordedChunks,
+    };
   }
 }

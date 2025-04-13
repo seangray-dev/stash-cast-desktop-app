@@ -14,3 +14,12 @@
 - [ ] Record: Show Mouse clicks option
 - [ ] Record: Implement countdown timer
 - [ ] Record: Implement recording timer
+- [ ] Settings: Video Quality Settings (720p, 1080p)
+- [ ] Settings: Hardware acceleration settings
+- [ ] Refactor: Move IPC handler to separate files/folder
+- [ ] Save as workspace when settings are changed 
+
+- [ ] Remove Auth
+- [ ] EASY DEASULTS
+- [ ] Afer recording, open finder and select the file
+

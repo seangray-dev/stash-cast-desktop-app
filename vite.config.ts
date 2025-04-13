@@ -32,6 +32,10 @@ export default defineConfig({
       },
     },
   },
+  worker: {
+    format: 'es',
+    plugins: () => [],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
