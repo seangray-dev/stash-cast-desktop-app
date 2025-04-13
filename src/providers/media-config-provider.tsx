@@ -1,10 +1,5 @@
-import { getCurrentWorkspace } from '@/db/operations';
 import { useMediaSources } from '@/hooks/use-media-sources';
-import {
-  initializeMediaPreferences,
-  saveMediaPreferences,
-  type MediaPreferences,
-} from '@/services/media-preferences';
+import { initializeMediaPreferences } from '@/services/media-preferences';
 import { DesktopSource, MediaSources } from '@/types/media';
 import {
   createContext,
@@ -17,91 +12,200 @@ import {
 } from 'react';
 
 interface MediaConfigContextType {
+  // Device selections (persisted)
   selectedScreen: DesktopSource | null;
   setSelectedScreen: (screen: DesktopSource | null) => void;
-  screenStream: MediaStream | null;
-  setScreenStream: (stream: MediaStream | null) => void;
   selectedMicId: string | null;
   setSelectedMicId: (id: string | null) => void;
-  microphoneStream: MediaStream | null;
-  setMicrophoneStream: (stream: MediaStream | null) => void;
   selectedCameraId: string | null;
   setSelectedCameraId: (id: string | null) => void;
-  isRecording: boolean;
-  setIsRecording: (recording: boolean) => void;
-  isDisplayEnabled: boolean;
-  setIsDisplayEnabled: (enabled: boolean) => void;
-  toggleDisplay: () => void;
-  isMicrophoneEnabled: boolean;
-  setIsMicrophoneEnabled: (enabled: boolean) => void;
-  cameraStream: MediaStream | null;
-  setCameraStream: (stream: MediaStream | null) => void;
-  isCameraEnabled: boolean;
-  setIsCameraEnabled: (enabled: boolean) => void;
-  showCameraWindow: () => void;
-  hideCameraWindow: () => void;
-  setMediaConfig: (config: MediaPreferences) => void;
-  isLoading: boolean;
   selectedScreenId: string | null;
   setSelectedScreenId: (id: string | null) => void;
+
+  // Toggle states (temporary)
+  isDisplayEnabled: boolean;
+  setIsDisplayEnabled: (enabled: boolean) => void;
+  isMicrophoneEnabled: boolean;
+  setIsMicrophoneEnabled: (enabled: boolean) => void;
+  isCameraEnabled: boolean;
+  setIsCameraEnabled: (enabled: boolean) => void;
+
+  // Streams
+  screenStream: MediaStream | null;
+  setScreenStream: (stream: MediaStream | null) => void;
+  microphoneStream: MediaStream | null;
+  setMicrophoneStream: (stream: MediaStream | null) => void;
+  cameraStream: MediaStream | null;
+  setCameraStream: (stream: MediaStream | null) => void;
+
+  // Other
+  isRecording: boolean;
+  setIsRecording: (recording: boolean) => void;
+  isLoading: boolean;
   mediaSources: MediaSources | undefined;
   setMediaSources: (sources: MediaSources) => void;
-  handleCameraChange: (cameraId: string | null) => void;
+
+  // Handlers
+  handleCameraChange: (id: string | null) => void;
+  handleMicChange: (id: string | null) => void;
+  handleScreenChange: (screen: DesktopSource | null) => void;
 }
 
-const MediaConfigContext = createContext<MediaConfigContextType>(null!);
+export const MediaConfigContext = createContext<MediaConfigContextType | null>(
+  null
+);
 
 export function MediaConfigProvider({ children }: { children: ReactNode }) {
   const { data: mediaSources, isPending } = useMediaSources();
   const [isInitializing, setIsInitializing] = useState(true);
+
+  // Device selections (persisted)
   const [selectedScreen, setSelectedScreen] = useState<DesktopSource | null>(
     null
   );
-  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
-  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(
-    null
-  );
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
+  const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
+
+  // Toggle states (temporary)
   const [isDisplayEnabled, setIsDisplayEnabled] = useState(false);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
   const [isCameraEnabled, setIsCameraEnabled] = useState(false);
-  const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
+
+  // Streams
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(
+    null
+  );
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+
+  // Other
+  const [isRecording, setIsRecording] = useState(false);
   const [mediaSourcesState, setMediaSourcesState] = useState<MediaSources>();
-  const [currentWorkspace, setCurrentWorkspace] = useState<any>(null);
-  const previousSettings = useRef<MediaPreferences | null>(null);
 
-  useEffect(() => {
-    if (mediaSources) {
-      setMediaSourcesState(mediaSources);
-    }
-  }, [mediaSources]);
+  // Track changes for device selections only
+  const previousSettings = useRef<{
+    selectedScreenId: string | null;
+    selectedMicId: string | null;
+    selectedCameraId: string | null;
+  } | null>(null);
 
-  // Handle screen capture when display is enabled
-  useEffect(() => {
-    if (!selectedScreen || !isDisplayEnabled) {
+  // Handle device changes (these affect persisted settings)
+  const handleCameraChange = useCallback(
+    async (cameraId: string | null) => {
+      console.log('🎥 Changing camera to:', cameraId);
+
+      // Stop existing stream
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        setCameraStream(null);
+      }
+
+      // Update selection
+      setSelectedCameraId(cameraId);
+
+      // If we have a camera ID and it's enabled, start the stream
+      if (cameraId && isCameraEnabled) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: cameraId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          });
+          setCameraStream(stream);
+
+          // Send stream to camera window
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            window.ipcRenderer.send('camera-stream-ready', {
+              streamId: videoTrack.id,
+              settings: videoTrack.getSettings(),
+            });
+            window.ipcRenderer.send('show-camera-window');
+          }
+        } catch (error) {
+          console.error('❌ Error starting camera stream:', error);
+          setIsCameraEnabled(false);
+        }
+      } else {
+        window.ipcRenderer.send('hide-camera-window');
+      }
+
+      // Track the change
+      if (previousSettings.current) {
+        previousSettings.current.selectedCameraId = cameraId;
+      }
+    },
+    [cameraStream, isCameraEnabled]
+  );
+
+  const handleMicChange = useCallback(
+    async (micId: string | null) => {
+      console.log('🎤 Changing microphone to:', micId);
+
+      // Stop existing stream
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach((track) => track.stop());
+        setMicrophoneStream(null);
+      }
+
+      // Update selection
+      setSelectedMicId(micId);
+
+      // Track the change
+      if (previousSettings.current) {
+        previousSettings.current.selectedMicId = micId;
+      }
+    },
+    [microphoneStream]
+  );
+
+  const handleScreenChange = useCallback(
+    async (screen: DesktopSource | null) => {
+      console.log('🖥️ Changing screen to:', screen?.name);
+
+      // Stop existing stream
       if (screenStream) {
         screenStream.getTracks().forEach((track) => track.stop());
         setScreenStream(null);
       }
-      return;
-    }
 
-    async function startCapture(screen: DesktopSource) {
+      // Update selection
+      setSelectedScreen(screen);
+      setSelectedScreenId(screen?.id || null);
+
+      // Track the change
+      if (previousSettings.current) {
+        previousSettings.current.selectedScreenId = screen?.id || null;
+      }
+    },
+    [screenStream]
+  );
+
+  // Handle screen stream when display is enabled/disabled
+  useEffect(() => {
+    async function startScreenCapture() {
+      if (!selectedScreen || !isDisplayEnabled) {
+        if (screenStream) {
+          screenStream.getTracks().forEach((track) => track.stop());
+          setScreenStream(null);
+        }
+        return;
+      }
+
       try {
-        console.log('🎥 Starting screen capture for:', screen.name);
-        const stream = await window.navigator.mediaDevices.getUserMedia({
+        console.log('🖥️ Starting screen capture for:', selectedScreen.name);
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             // @ts-ignore - Electron's desktopCapturer requires these properties
             mandatory: {
               chromeMediaSource: 'desktop',
-              chromeMediaSourceId: screen.id,
+              chromeMediaSourceId: selectedScreen.id,
             },
           },
         });
-        console.log('📺 Screen capture stream obtained');
         setScreenStream(stream);
       } catch (error) {
         console.error('❌ Error capturing screen:', error);
@@ -109,380 +213,154 @@ export function MediaConfigProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    startCapture(selectedScreen);
-
-    return () => {
-      if (screenStream) {
-        screenStream.getTracks().forEach((track) => track.stop());
-      }
-    };
+    startScreenCapture();
   }, [selectedScreen, isDisplayEnabled]);
 
+  // Handle camera stream when enabled/disabled
   useEffect(() => {
-    async function initializeConfig() {
-      if (!mediaSources) return;
-
-      try {
-        console.log('🔄 Starting media config initialization');
-        setIsInitializing(true);
-        const preferences = await initializeMediaPreferences(
-          mediaSources.displays,
-          mediaSources.audioinputs,
-          mediaSources.videoinputs
-        );
-        console.log('📦 Received preferences:', preferences);
-
-        // Initialize state with preferences
-        if (preferences.selectedScreenId) {
-          console.log(
-            '🎯 Setting selected screen:',
-            preferences.selectedScreenId
-          );
-          const screen = mediaSources.displays.find(
-            (s) => s.id === preferences.selectedScreenId
-          );
-          if (screen) {
-            console.log('🖥️ Found matching screen:', screen.name);
-            setSelectedScreen(screen);
-            setSelectedScreenId(preferences.selectedScreenId);
-          } else {
-            console.log('⚠️ Selected screen not found in available displays');
-          }
+    async function updateCameraStream() {
+      // If disabled or no camera selected, stop stream
+      if (!isCameraEnabled || !selectedCameraId) {
+        if (cameraStream) {
+          cameraStream.getTracks().forEach((track) => track.stop());
+          setCameraStream(null);
         }
-
-        // Set all state at once to avoid race conditions
-        setSelectedMicId(preferences.selectedMicId);
-        setSelectedCameraId(preferences.selectedCameraId);
-        setIsMicrophoneEnabled(preferences.isMicrophoneEnabled);
-        setIsCameraEnabled(preferences.isCameraEnabled);
-        setIsDisplayEnabled(preferences.isDisplayEnabled);
-
-        console.log('✨ Initialized state:', {
-          selectedScreenId: preferences.selectedScreenId,
-          selectedMicId: preferences.selectedMicId,
-          selectedCameraId: preferences.selectedCameraId,
-          isMicrophoneEnabled: preferences.isMicrophoneEnabled,
-          isCameraEnabled: preferences.isCameraEnabled,
-          isDisplayEnabled: preferences.isDisplayEnabled,
-        });
-
-        // Save preferences to ensure they persist
-        await saveMediaPreferences(preferences);
-      } catch (error) {
-        console.error('❌ Error initializing media config:', error);
-      } finally {
-        setIsInitializing(false);
-        console.log('✅ Initialization complete');
+        window.ipcRenderer.send('hide-camera-window');
+        return;
       }
-    }
 
-    if (!isPending && mediaSources) {
-      console.log('🎬 Media sources ready:', {
-        displays: mediaSources.displays.length,
-        audioinputs: mediaSources.audioinputs.length,
-        videoinputs: mediaSources.videoinputs.length,
-      });
-      initializeConfig();
-    }
-  }, [mediaSources, isPending]);
-
-  // Handle camera stream when camera is enabled
-  useEffect(() => {
-    console.log('📸 Camera Effect:', {
-      hasSelectedCamera: !!selectedCameraId,
-      isCameraEnabled,
-      hasExistingStream: !!cameraStream,
-    });
-
-    const cleanup = () => {
+      // If already streaming the correct camera, just update window visibility
       if (cameraStream) {
-        console.log('🧹 Cleanup: Stopping camera stream');
-        cameraStream.getTracks().forEach((track) => {
-          track.stop();
-          console.log('✋ Stopped track:', track.id);
-        });
-        setCameraStream(null);
-      }
-    };
-
-    if (!selectedCameraId || !isCameraEnabled) {
-      cleanup();
-      hideCameraWindow();
-      return;
-    }
-
-    async function startCamera() {
-      try {
-        console.log('🎥 Starting camera with:', { deviceId: selectedCameraId });
-        cleanup(); // Clean up any existing stream before creating a new one
-
-        // Ensure selectedCameraId is not null before using it
-        if (!selectedCameraId) {
-          throw new Error('No camera selected');
+        const videoTrack = cameraStream.getVideoTracks()[0];
+        if (videoTrack) {
+          window.ipcRenderer.send('camera-stream-ready', {
+            streamId: videoTrack.id,
+            settings: videoTrack.getSettings(),
+          });
+          window.ipcRenderer.send('show-camera-window');
         }
+        return;
+      }
 
-        const stream = await window.navigator.mediaDevices.getUserMedia({
+      // Start new stream
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: { exact: selectedCameraId },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
         });
-
-        console.log('📹 Camera stream obtained:', {
-          tracks: stream.getTracks().map((t) => ({
-            kind: t.kind,
-            enabled: t.enabled,
-            id: t.id,
-          })),
-        });
-
         setCameraStream(stream);
 
-        // Only show camera window if we have a screen stream
-        if (isDisplayEnabled) {
-          console.log('🪟 Showing camera window due to display being enabled');
-          const videoTrack = stream.getVideoTracks()[0];
-          if (videoTrack) {
-            window.ipcRenderer.send('camera-stream-ready', {
-              streamId: videoTrack.id,
-              settings: videoTrack.getSettings(),
-            });
-            showCameraWindow();
-          }
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          window.ipcRenderer.send('camera-stream-ready', {
+            streamId: videoTrack.id,
+            settings: videoTrack.getSettings(),
+          });
+          window.ipcRenderer.send('show-camera-window');
         }
       } catch (error) {
-        console.error('❌ Error capturing camera:', error);
+        console.error('❌ Error starting camera stream:', error);
         setIsCameraEnabled(false);
-        hideCameraWindow();
       }
     }
 
-    startCamera();
-    return cleanup;
-  }, [selectedCameraId, isCameraEnabled]);
+    updateCameraStream();
+  }, [isCameraEnabled, selectedCameraId]);
 
-  // Handle camera window visibility based on display state
+  // Initialize from workspace settings
   useEffect(() => {
-    console.log('🪟 Camera Window Effect:', {
-      isDisplayEnabled,
-      isCameraEnabled,
-      hasCameraStream: !!cameraStream,
-    });
+    async function initializeConfig() {
+      if (!mediaSources) return;
 
-    if (isDisplayEnabled && isCameraEnabled && cameraStream) {
-      console.log('📺 Showing camera window and sending stream ID');
-      const videoTrack = cameraStream.getVideoTracks()[0];
-      if (videoTrack) {
-        window.ipcRenderer.send('camera-stream-ready', {
-          streamId: videoTrack.id,
-          settings: videoTrack.getSettings(),
-        });
-        showCameraWindow();
+      try {
+        console.log('🚀 Initializing media config');
+        const preferences = await initializeMediaPreferences(
+          mediaSources.displays,
+          mediaSources.audioinputs,
+          mediaSources.videoinputs
+        );
+
+        // Set device selections (persisted settings)
+        setSelectedScreenId(preferences.selectedScreenId);
+        if (preferences.selectedScreenId) {
+          const screen = mediaSources.displays.find(
+            (s) => s.id === preferences.selectedScreenId
+          );
+          setSelectedScreen(screen || null);
+        }
+        setSelectedMicId(preferences.selectedMicId);
+        setSelectedCameraId(preferences.selectedCameraId);
+
+        // Set initial toggle states
+        setIsDisplayEnabled(preferences.isDisplayEnabled);
+        setIsMicrophoneEnabled(preferences.isMicrophoneEnabled);
+        setIsCameraEnabled(preferences.isCameraEnabled);
+
+        // Initialize change tracking
+        previousSettings.current = {
+          selectedScreenId: preferences.selectedScreenId,
+          selectedMicId: preferences.selectedMicId,
+          selectedCameraId: preferences.selectedCameraId,
+        };
+
+        console.log('✅ Media config initialized:', preferences);
+      } catch (error) {
+        console.error('❌ Error initializing media config:', error);
+      } finally {
+        setIsInitializing(false);
       }
-    } else {
-      console.log('🚫 Hiding camera window');
-      hideCameraWindow();
-    }
-  }, [isDisplayEnabled, isCameraEnabled, cameraStream]);
-
-  const showCameraWindow = () => {
-    window.ipcRenderer.send('show-camera-window');
-  };
-
-  const hideCameraWindow = () => {
-    window.ipcRenderer.send('hide-camera-window');
-  };
-
-  const toggleDisplay = async () => {
-    const newState = !isDisplayEnabled;
-    setIsDisplayEnabled(newState);
-
-    // Save the new state
-    const preferences: MediaPreferences = {
-      selectedScreenId,
-      selectedMicId,
-      selectedCameraId,
-      isMicrophoneEnabled,
-      isCameraEnabled,
-      isDisplayEnabled: newState,
-    };
-    await saveMediaPreferences(preferences);
-  };
-
-  const setMediaConfig = async (config: MediaPreferences) => {
-    console.log('🔄 Setting media config:', config);
-
-    // First update all the state
-    setSelectedScreenId(config.selectedScreenId);
-    if (config.selectedScreenId && mediaSources) {
-      const screen = mediaSources.displays.find(
-        (s) => s.id === config.selectedScreenId
-      );
-      setSelectedScreen(screen || null);
-    }
-    setSelectedMicId(config.selectedMicId);
-    setSelectedCameraId(config.selectedCameraId);
-    setIsMicrophoneEnabled(config.isMicrophoneEnabled);
-    setIsCameraEnabled(config.isCameraEnabled);
-    setIsDisplayEnabled(config.isDisplayEnabled);
-
-    // Then save the preferences
-    await saveMediaPreferences(config);
-  };
-
-  const handleWorkspaceSave = async (workspaceId: number) => {
-    console.log('💾 Saving workspace:', workspaceId);
-
-    // Get current settings
-    const currentSettings: MediaPreferences = {
-      selectedScreenId: selectedScreen?.id || null,
-      selectedMicId,
-      selectedCameraId,
-      isMicrophoneEnabled,
-      isCameraEnabled,
-      isDisplayEnabled,
-    };
-
-    // Save the current settings
-    await saveMediaPreferences(currentSettings);
-
-    // Update the current workspace reference
-    const workspace = await getCurrentWorkspace();
-    setCurrentWorkspace(workspace);
-
-    // Store these as the previous settings to prevent another dialog
-    previousSettings.current = currentSettings;
-
-    // Close the dialog
-  };
-
-  // Handle camera selection changes
-  const handleCameraChange = useCallback(
-    async (cameraId: string | null) => {
-      console.log('🎥 Changing camera to:', cameraId);
-
-      // First stop any existing camera stream
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-        setCameraStream(null);
-      }
-
-      // Update the camera ID
-      setSelectedCameraId(cameraId);
-
-      // If we're selecting a camera, enable it
-      if (cameraId) {
-        setIsCameraEnabled(true);
-      }
-
-      // Save the new settings immediately
-      const newSettings: MediaPreferences = {
-        selectedScreenId: selectedScreen?.id || null,
-        selectedMicId,
-        selectedCameraId: cameraId,
-        isMicrophoneEnabled,
-        isCameraEnabled: true,
-        isDisplayEnabled,
-      };
-
-      await saveMediaPreferences(newSettings);
-      previousSettings.current = newSettings;
-    },
-    [
-      cameraStream,
-      selectedScreen,
-      selectedMicId,
-      isMicrophoneEnabled,
-      isDisplayEnabled,
-    ]
-  );
-
-  const handleSettingsChange = useCallback(async () => {
-    // Don't show dialog during initialization
-    if (isInitializing) return;
-
-    const currentSettings: MediaPreferences = {
-      selectedScreenId: selectedScreen?.id || null,
-      selectedMicId,
-      selectedCameraId,
-      isMicrophoneEnabled,
-      isCameraEnabled,
-      isDisplayEnabled,
-    };
-
-    // If this is the first change, store the initial settings
-    if (!previousSettings.current) {
-      previousSettings.current = currentSettings;
-      return;
     }
 
-    // Check if any settings have changed
-    const hasChanges = Object.entries(currentSettings).some(
-      ([key, value]) =>
-        previousSettings.current?.[key as keyof MediaPreferences] !== value
-    );
-
-    if (hasChanges) {
-      const workspace = await getCurrentWorkspace();
-      setCurrentWorkspace(workspace);
+    if (!isPending && mediaSources) {
+      initializeConfig();
     }
+  }, [mediaSources, isPending]);
 
-    previousSettings.current = currentSettings;
-  }, [
-    isInitializing,
-    selectedScreen,
-    selectedMicId,
-    selectedCameraId,
-    isMicrophoneEnabled,
-    isCameraEnabled,
-    isDisplayEnabled,
-  ]);
-
-  // Watch for settings changes
-  useEffect(() => {
-    handleSettingsChange();
-  }, [handleSettingsChange]);
-
-  const value = {
+  const value: MediaConfigContextType = {
+    // Device selections
     selectedScreen,
     setSelectedScreen,
-    screenStream,
-    setScreenStream,
     selectedMicId,
     setSelectedMicId,
-    microphoneStream,
-    setMicrophoneStream,
     selectedCameraId,
     setSelectedCameraId,
-    isRecording,
-    setIsRecording,
-    isDisplayEnabled,
-    setIsDisplayEnabled,
-    toggleDisplay,
-    isMicrophoneEnabled,
-    setIsMicrophoneEnabled,
-    cameraStream,
-    setCameraStream,
-    isCameraEnabled,
-    setIsCameraEnabled,
-    showCameraWindow,
-    hideCameraWindow,
-    setMediaConfig,
-    isLoading: isInitializing || isPending,
     selectedScreenId,
     setSelectedScreenId,
+
+    // Toggle states
+    isDisplayEnabled,
+    setIsDisplayEnabled,
+    isMicrophoneEnabled,
+    setIsMicrophoneEnabled,
+    isCameraEnabled,
+    setIsCameraEnabled,
+
+    // Streams
+    screenStream,
+    setScreenStream,
+    microphoneStream,
+    setMicrophoneStream,
+    cameraStream,
+    setCameraStream,
+
+    // Other
+    isRecording,
+    setIsRecording,
+    isLoading: isInitializing || isPending,
     mediaSources: mediaSourcesState,
     setMediaSources: setMediaSourcesState,
+
+    // Handlers
     handleCameraChange,
+    handleMicChange,
+    handleScreenChange,
   };
 
   return (
-    <MediaConfigContext.Provider
-      value={{
-        ...value,
-        handleCameraChange,
-      }}>
+    <MediaConfigContext.Provider value={value}>
       {children}
     </MediaConfigContext.Provider>
   );

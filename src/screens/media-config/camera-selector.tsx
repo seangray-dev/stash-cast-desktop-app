@@ -40,20 +40,7 @@ export default function CameraSelector() {
   } = useMediaConfig();
   const { data, isPending } = useMediaSources();
 
-  // When component mounts, select the first available camera
-  useEffect(() => {
-    if (data?.videoinputs && data.videoinputs.length > 0 && !selectedCameraId) {
-      console.log('Setting initial camera:', data.videoinputs[0].deviceId);
-      handleCameraChange(data.videoinputs[0].deviceId);
-    }
-  }, [data, selectedCameraId, handleCameraChange]);
-
   const handleCameraToggle = () => {
-    console.log('Toggling camera:', {
-      currentlyEnabled: isCameraEnabled,
-      selectedId: selectedCameraId,
-      availableCameras: data?.videoinputs,
-    });
     setIsCameraEnabled(!isCameraEnabled);
   };
 

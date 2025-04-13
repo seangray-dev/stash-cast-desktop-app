@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
 import { MicIcon } from 'lucide-react';
 
 import { useMediaConfig } from '../../providers/media-config-provider';

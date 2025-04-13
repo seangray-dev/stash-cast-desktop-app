@@ -19,7 +19,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMediaConfig } from '../../../providers/media-config-provider';
 
 export default function WorkspaceSelector() {
-  const { setMediaConfig } = useMediaConfig();
+  const {
+    handleCameraChange,
+    handleMicChange,
+    handleScreenChange,
+    setIsCameraEnabled,
+    setIsMicrophoneEnabled,
+    setIsDisplayEnabled,
+  } = useMediaConfig();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(
     null
@@ -27,57 +34,59 @@ export default function WorkspaceSelector() {
   const [isLoading, setIsLoading] = useState(true);
 
   const applyWorkspaceSettings = useCallback(
-    async (workspace: Workspace) => {
-      console.log('🔄 Applying workspace settings for:', workspace.name);
-      const settings = await getWorkspaceWithSettings(workspace.id);
-      if (settings) {
-        console.log('⚙️ Found settings:', settings);
-        setCurrentWorkspace(settings.workspace);
-        setMediaConfig({
-          selectedScreenId: settings.settings.selectedScreenId,
-          selectedMicId: settings.settings.selectedMicId,
-          selectedCameraId: settings.settings.selectedCameraId,
-          isMicrophoneEnabled: settings.settings.isMicrophoneEnabled,
-          isCameraEnabled: settings.settings.isCameraEnabled,
-          isDisplayEnabled: settings.settings.isDisplayEnabled,
-        });
-      }
+    (result: { workspace: Workspace; settings: any }) => {
+      setCurrentWorkspace(result.workspace);
+
+      // Apply device selections using handlers
+      handleScreenChange(result.settings.selectedScreenId);
+      handleMicChange(result.settings.selectedMicId);
+      handleCameraChange(result.settings.selectedCameraId);
+
+      // Set initial toggle states
+      setIsCameraEnabled(result.settings.isCameraEnabled);
+      setIsMicrophoneEnabled(result.settings.isMicrophoneEnabled);
+      setIsDisplayEnabled(result.settings.isDisplayEnabled);
     },
-    [setMediaConfig]
+    [
+      handleCameraChange,
+      handleMicChange,
+      handleScreenChange,
+      setIsCameraEnabled,
+      setIsMicrophoneEnabled,
+      setIsDisplayEnabled,
+    ]
   );
 
   useEffect(() => {
     const initializeWorkspaces = async () => {
       try {
         setIsLoading(true);
-        console.log('🔄 Initializing workspaces');
-
-        // First, get all workspaces
-        const allWorkspaces = await getAllWorkspaces();
-        console.log('📂 Found workspaces:', allWorkspaces);
-        setWorkspaces(allWorkspaces);
-
-        // Then get the current workspace
+        // First, get the current workspace
         const current = await getCurrentWorkspace();
-        console.log('🎯 Current workspace:', current);
-
         if (current) {
-          await applyWorkspaceSettings(current);
+          const result = await getWorkspaceWithSettings(current.id);
+          if (result) {
+            applyWorkspaceSettings(result);
+          }
         }
+
+        // Then load all workspaces
+        const allWorkspaces = await getAllWorkspaces();
+        setWorkspaces(allWorkspaces);
       } catch (error) {
-        console.error('❌ Error initializing workspaces:', error);
+        console.error('Error initializing workspaces:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeWorkspaces();
-  }, [applyWorkspaceSettings]);
+  }, []); // Empty dependency array since we only want this to run once
 
   const handleWorkspaceSelect = async (workspaceId: number) => {
-    const workspace = workspaces.find((w) => w.id === workspaceId);
-    if (workspace) {
-      await applyWorkspaceSettings(workspace);
+    const result = await getWorkspaceWithSettings(workspaceId);
+    if (result) {
+      applyWorkspaceSettings(result);
     }
   };
 
